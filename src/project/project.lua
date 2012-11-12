@@ -88,7 +88,7 @@
 		end
 
 		-- Return blank if we've called addConfig recursively
-		if table.isempty(finalBuildVariant) then 
+		if table.isempty(prj.buildVariantMap[finalBuildName]) then 
 			return {}
 		end
 		-- Placeholders to test for recursion
@@ -138,6 +138,22 @@
 		end
 		
 		return buildVariant
+	end
+	
+	function project.getDefaultBuildVariant(prj)
+		local defaultcfg
+		if _OPTIONS['config'] then
+			defaultcfg = _OPTIONS['config'][1]
+		else
+			defaultcfg = prj.defaultconfiguration or (prj.solution or {}).defaultconfiguration
+		end
+		if not defaultcfg then
+			return nil
+		end
+		
+		local defaultBuildVariant = prj.buildVariantMap[defaultcfg]
+		
+		return defaultBuildVariant
 	end
 
 --

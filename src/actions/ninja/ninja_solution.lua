@@ -240,10 +240,11 @@ function ninja.writeProjectTargets(prj, scope)
 	local prjTargets = {}
 	local isCommandProject = prj.isCommandProject		-- a command project has only one configuration (& output) which is equivalent to all variants
 	local prjTargetName = prj.name
-	local defaultconfiguration = prj.defaultconfiguration or (prj.solution or {}).defaultconfiguration
-	if defaultconfiguration then
-		defaultconfiguration = ninja.replaceSpecialChars(defaultconfiguration)
+	local defaultBuildVariant = project.getDefaultBuildVariant(prj)
+	if not defaultBuildVariant then
+		defaultBuildVariant = { buildcfg = 'All' }
 	end
+	local defaultBuildName = config.getBuildName(defaultBuildVariant)
 		
 	-- Validate
 	for cfg in project.eachconfig(prj) do
@@ -263,9 +264,6 @@ function ninja.writeProjectTargets(prj, scope)
 	
 		cfg.language = prj.language
 
-		-- Check if we should include this configuration in the build		
-		local buildThis = true
-		
 		-- Only build source gen & command once
 		if cfg.kind == 'SourceGen' or cfg.kind == 'Command' then
 			if isCommandProject then
@@ -278,15 +276,13 @@ function ninja.writeProjectTargets(prj, scope)
 			prjTargetName = prjTargetName:match("[^/]*$")
 		end
 		
-		if buildThis then   
-			-- Put the default configuration first. 
-			-- This fixes a problem where auto-generated header files put in the src folders are incorrectly updated
-			--  as the script name includes the name of the first cfg processed
-			if cfg.buildcfg == defaultconfiguration then 
-				table.insert(cfgs, 1, cfg)
-			else
-				table.insert(cfgs, cfg)
-			end
+		-- Put the default configuration first. 
+		-- This fixes a problem where auto-generated header files put in the src folders are incorrectly updated
+		--  as the script name includes the name of the first cfg processed
+		if cfg == prj.configs[defaultBuildName] then 
+			table.insert(cfgs, 1, cfg)
+		else
+			table.insert(cfgs, cfg)
 		end
 	end
 	
@@ -607,14 +603,11 @@ function ninja.writeProjectTargets(prj, scope)
 timer.stop(tmr)
 	
 	local defaultTarget = 'donothing'
-	if not defaultconfiguration or not (prj.configs or {})[defaultconfiguration] then
-		defaultconfiguration = 'All'
-	end
 		
-	if (prj.configs or {})[defaultconfiguration] then
-		local cfg = prj.configs[defaultconfiguration]
+	if (prj.configs or {})[defaultBuildName] then
+		local cfg = prj.configs[defaultBuildName]
 		if cfg.buildwhen ~= 'explicit' then
-			defaultTarget = prj.name..'.'..cfg.shortname
+			defaultTarget = prj.name..'.'..ninja.replaceSpecialChars(cfg.shortname)
 			prjTargets[''] = { prj.name }
 		end
 	end
