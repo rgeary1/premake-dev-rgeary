@@ -129,3 +129,13 @@
 		description = 'Build all projects with variant define { "Define1", "Define2", ... }',
 		aliases 	= { "d" },
 	}
+	newoption {
+		trigger 	= "toolset",
+		value 		= "name",
+		description = "Set the toolset",
+	}
+	newoption {
+		trigger 	= "config",
+		value 		= "name",
+		description = "Set the configurations",
+	}

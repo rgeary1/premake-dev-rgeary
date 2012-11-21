@@ -228,13 +228,18 @@
 				fname = 'premake4.lua' 
 			end
 		end
+
+		-- Setup default state
+		global()
+		configuration {}
+		if _OPTIONS['toolset'] then
+			toolset(_OPTIONS['toolset'])
+		end
 		
 		if (os.isfile(fname) and requirePremakeFile) then
 			timer.start('Load build script')
 			
-			-- Setup state & load the build script
-			global()
-			configuration {}
+			-- load the build script
 			dofile(fname, true)
 			
 			timer.stop()
