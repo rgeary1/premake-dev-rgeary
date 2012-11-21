@@ -366,7 +366,7 @@ int main (int argc, char **argv) {
 }
 #endif // LUA_C_MAIN
 
-LUA_API lua_dotty (lua_State *L) {
+LUA_API int lua_dotty (lua_State *L) {
   int status;
   const char *oldprogname = progname;
   progname = NULL;

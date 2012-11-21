@@ -70,8 +70,9 @@
 		-- sort the list by trigger
 		local keys = { }
 		for _, option in pairs(premake.option.list) do
-			table.insert(keys, option.trigger)
+			keys[option.trigger] = option.trigger
 		end
+		keys = getKeys(keys)
 		table.sort(keys)
 		
 		local i = 0

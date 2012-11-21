@@ -43,6 +43,7 @@ local icc_cc = newtool {
 		},
 		Profiling      		= "-pg",
 		Symbols        		= "-g",
+		fPIC 				= "-fPIC",
 	},
 	prefixes = {
 		defines 		= '-D',
@@ -189,6 +190,31 @@ newtoolset {
 	tools = { icc_cc, icc_cxx, icc_asm, icc_ar, icc_link },
 }
 newtoolset {
+	toolsetName = 'icc11.1', 
+	tools = { 
+		newtool {
+			inheritfrom = icc_cc,
+			binaryName = 'icpc11.1',
+		},
+		newtool {
+			inheritfrom = icc_cxx,
+			binaryName = 'icpc11.1',
+		},
+		newtool {
+			inheritfrom = icc_asm,
+			binaryName = 'icpc11.1',
+		},
+		newtool {
+			inheritfrom = icc_ar,
+			binaryName = 'xiar11.1',
+		},
+		newtool {
+			inheritfrom = icc_link,
+			binaryName = 'icpc11.1',
+		},
+	}
+}
+newtoolset {
 	toolsetName = 'icc12', 
 	tools = { 
 		newtool {
@@ -214,27 +240,27 @@ newtoolset {
 	}
 }
 newtoolset {
-	toolsetName = 'icc11.1', 
+	toolsetName = 'icc12.1', 
 	tools = { 
 		newtool {
 			inheritfrom = icc_cc,
-			binaryName = 'icpc11.1',
+			binaryName = 'icpc12.1',
 		},
 		newtool {
 			inheritfrom = icc_cxx,
-			binaryName = 'icpc11.1',
+			binaryName = 'icpc12.1',
 		},
 		newtool {
 			inheritfrom = icc_asm,
-			binaryName = 'icpc11.1',
+			binaryName = 'icpc12.1',
 		},
 		newtool {
 			inheritfrom = icc_ar,
-			binaryName = 'xiar11.1',
+			binaryName = 'xiar12.1',
 		},
 		newtool {
 			inheritfrom = icc_link,
-			binaryName = 'icpc11.1',
+			binaryName = 'icpc12.1',
 		},
 	}
 }

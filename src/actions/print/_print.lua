@@ -197,6 +197,7 @@
 			indent(2)
 
 			p1('kind', cfg.kind)
+			attachDebugger()
 			local cfg2 = keyedblocks.getconfig(prj, cfg.filter or {}, nil, {})
 			p1('usevariant', cfg.usevariant)
 			p1('uses', cfg.uses)

@@ -37,5 +37,5 @@
 	
 	premake.releases = {}
 	
--- Global defualt settings, override this in the system script
-	premake.clearActiveProjectOnNewFile = false
+-- Global defualt settings, override this in the system script if necessary
+	premake.clearActiveProjectOnNewFile = true

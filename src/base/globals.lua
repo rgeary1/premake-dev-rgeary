@@ -89,7 +89,7 @@
 		-- run the chunk. How can I catch variable return values?
 		local a, b, c, d, e, f = builtin_dofile(_SCRIPT)
 		
-		if premake.clearActiveProjectOnNewFile then
+		if premake.clearActiveProjectOnNewFile and premake.api then
 			-- close the project scope
 			premake.api.scope.configuration = nil
 			premake.api.scope.project = nil
@@ -213,7 +213,7 @@
 --
 
 	function map(t,fn)
-	  rv = {}
+	  local rv = {}
 	  if t then
 		  for key,value in pairs(t) do
 		  	table.insert(rv, fn(key,value))
@@ -227,7 +227,7 @@
 --
 
 	function imap(t,fn)
-	  rv = {}
+	  local rv = {}
 	  if( t ) then
 		  for _,value in ipairs(t) do
 		  	table.insert(rv, fn(value))
@@ -241,7 +241,7 @@
 --
   
 	function getKeys(t)
-		rv = {}
+		local rv = {}
 		if t then
 			for k,_ in pairs(t) do
 				table.insert(rv, k)
@@ -256,7 +256,7 @@
 --
   
 	function getValues(t)
-		rv = {}
+		local rv = {}
 		if t then
 			for _,v in pairs(t) do
 				table.insert(rv, v)
@@ -270,7 +270,7 @@
 --
   
 	function getIValues(t)
-		rv = {}
+		local rv = {}
 		if t then
 			for _,v in ipairs(t) do
 				table.insert(rv, v)
@@ -283,7 +283,7 @@
 --
 
 	function getFunctionNames(t)
-		rv = {}
+		local rv = {}
 		if t then
 			for k,v in pairs(t) do
 				if( type(v) == "function" ) then
@@ -299,7 +299,7 @@
 --
 
 	function getSubTableNames(t)
-		rv = {}
+		local rv = {}
 		if t then
 			for k,v in pairs(t) do
 				local typeV = type(v)
@@ -334,7 +334,7 @@
 -- 'Inherit' functions & members from a base table. Performs a shallow copy of a table.
 --
 	function inheritFrom(t, derivedClassName)
-		rv = {}
+		local rv = {}
 		for k,v in pairs(t) do
 			rv[k] = v
 		end

@@ -40,6 +40,7 @@ local gcc_cc = newtool {
 		OptimizeSpeed  = "-O3",
 		OptimizeOff    = "-O0",
 		Symbols        = "-g",
+		fPIC 		   = "-fPIC",
 	},
 	prefixes = {
 		defines 		= '-D',

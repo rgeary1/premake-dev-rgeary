@@ -1,4 +1,3 @@
-
 --
 -- api.lua
 -- Implementation of the solution, project, and configuration APIs.
@@ -881,6 +880,18 @@
 		namealiases = { "define" },
 	}
 	
+	-- hack. Need to change usage requirements implementation so defines always propagate from usage
+	api.register {
+		name = "alwaysdefines",
+		scope = "config",
+		kind = "string",
+		isList = true,
+		expandtokens = true,
+		splitOnSpace = true,
+		namealiases = { "alwaysdefine" },
+		usagePropagation = "Always",
+	}
+	
 	api.register {
 		name = "deploymentoptions",
 		scope = "config",
@@ -923,6 +934,7 @@
 			"EnableAVX",
 			"FatalWarnings",
 			Float = { "Fast", "Strict", },
+			"fPIC",
 			Inline = { "Disabled", "ExplicitOnly", "Anything", },
 			"Managed",
 			"MFC",
