@@ -57,7 +57,7 @@
 --  buildVariant is a keyed table of keywords (buildcfg, platform, <featureName> = <featureName>) 
 --   describing the config
 -- 
-	local inProgress = {}
+	local addedVariants = {}
 	function project.addconfig(prj, initialBuildVariant)
 		if not prj or ptype(prj) ~= 'project' then return end
 		if prj.isUsage then
@@ -80,6 +80,12 @@
 		
 		-- Check if a mapping already exists
 		local finalBuildVariant = project.applyBuildVariantMap(prj, initialBuildVariant)
+		
+		-- Return blank if we've called addConfig recursively
+		if finalBuildVariant['__buildinprogress'] then 
+			return { }
+		end
+		
 		local finalBuildName = config.getBuildName(finalBuildVariant)
 
 		-- Return the config if it's already baked
@@ -87,13 +93,14 @@
 			return prj.configs[finalBuildName]
 		end
 
-		-- Return blank if we've called addConfig recursively
-		if table.isempty(prj.buildVariantMap[finalBuildName]) then 
-			return {}
-		end
 		-- Placeholders to test for recursion
 		prj.buildVariantMap[initialBuildName] = finalBuildVariant		
-		prj.buildVariantMap[finalBuildName] = {}
+		prj.buildVariantMap[finalBuildName] = { ['__buildinprogress'] = true }
+		
+		if finalBuildName == 'All' and not prj.isCommandProject then
+			--print("Can't create 'All' build variant for regular project "..prj.name)
+			return {}
+		end
 		
 		--printDebug("Baking "..prj.name..':'..finalBuildName)
 		
@@ -109,7 +116,14 @@
 
 		-- Add to the list of configs		
 		prj.configs[finalBuildName] = cfg
-		
+
+
+		if not addedVariants[finalBuildName] then
+			addedVariants[finalBuildName] = finalBuildName
+			if finalBuildName ~= 'All' then
+				printDebug("Added variant "..finalBuildName)
+			end
+		end		
 		--printDebug("Baked "..prj.name..':'..finalBuildName)
 		
 		-- Add the build variants to the map

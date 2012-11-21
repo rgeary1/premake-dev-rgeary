@@ -189,6 +189,7 @@ function keyedblocks.resolveUses(kb, obj)
 					if suggestions then
 						errMsg = errMsg .. '"\n' .. suggestions
 					end
+				useProj, suggestions = keyedblocks.getUsage(useProjName, obj.namespaces)
 					error(errMsg)
 				end
 				kb.__uses[useProjName] = { prj = useProj, usefeature = usefeature }
@@ -464,9 +465,14 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 		-- Add the build variant to the output
 		-- but filter out any build variants which we didn't use
 		rv.buildVariant = {}
-		for k,v in pairs(config.getBuildVariant(filter)) do
-			if k == 'buildcfg' or k == 'platform' or foundBlocks.cfgs[v] then
-				rv.buildVariant[k] = v
+		if filter.buildcfg == 'all' then
+			-- no variants for "All"
+			rv.buildVariant = { buildcfg = filter.buildcfg }
+		else
+			for k,v in pairs(config.getBuildVariant(filter)) do
+				if k == 'buildcfg' or k == 'platform' or foundBlocks.cfgs[v] then
+					rv.buildVariant[k] = v
+				end
 			end
 		end
 		
@@ -477,6 +483,10 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 			end
 		end
 	end
+	
+	if rv.alwaysdefines then
+		oven.mergefield(rv, 'defines', rv.alwaysdefines) 
+	end	
 			
 	timer.stop(tmr)
 	

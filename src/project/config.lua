@@ -75,7 +75,7 @@
 			--error("Can't use target, missing cfg.kind")
 		end
 		
-		-- Propagate fields
+		-- Propagate some fields from real project to usage project
 		for fieldName, field in pairs(premake.propagatedFields) do
 			local usagePropagate = field.usagePropagation
 			local value = realCfg[fieldName]
