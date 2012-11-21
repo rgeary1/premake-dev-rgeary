@@ -246,6 +246,17 @@
 
 	local function getProject(allProjects, name, namespaces)
 		local prj = allProjects[name]
+		
+		-- convert namespace from string to array
+		if type(namespaces) == 'string' then
+			local namespace = namespaces
+			namespaces = {}
+			local prevNS = ''
+			for n in namespace:gmatch("[^/]+/") do
+				table.insert(namespaces, prevNS..n)
+				prevNS = prevNS..n
+			end
+		end
 
 		-- check aliases		
 		if not prj then
@@ -307,8 +318,10 @@
 		local suggestionStr
 		
 		-- Find hints
-		local namespaces,shortname,fullname = project.getNameParts(name, namespaces)
-
+		local namespace = '/'
+		if namespaces and #namespaces > 1 then namespace = namespaces[#namespaces] end
+		local namespace,shortname,fullname = project.getNameParts(name, namespace)
+		
 		-- Check for wrong namespace
 		for prjName,prj in Seq:new(targets.aliases):concat(targets.allUsage):each() do
 			if prj.shortname == shortname then
@@ -348,19 +361,42 @@
 	end
 	
 	-- helper function
-	function project.getNameParts(name, prefix)
-		local namespaces = {}
+	function project.getNameParts(name, namespace)
+		local shortname = name
+		namespace = namespace or '/'
+		local fullname = name
+
+		if name:find('/') then
+			-- extract namespace from the name
+			namespace,shortname = name:match("(.*/)([^/]+)$")
+		end
+
+		if not namespace:endswith('/') then
+			error("namespace must end with /")
+		end 
 		
-		if prefix then
-			if type(prefix) == 'table' then
-				for _,p in ipairs(prefix) do
-					table.insert(namespaces, p)
-				end
+		-- special case for fully specified names, avoids a/b/b when you mean just a/b
+		if not name:startswith(namespace) then
+			fullname = namespace .. shortname
+		end
+		
+		return namespace, shortname, fullname
+	end
+
+	--
+	-- DELETE ME
+	--	
+	function project.xgetNameParts(name, namespaces)
+		namespaces = namespaces or {}
+		
+		if namespaces then
+			local prefix
+			if type(namespaces) == 'table' then
 				prefix = namespaces[#namespaces]
 			end
 			
 			if not prefix:endswith('/') then
-				error("projectprefix must end with /")
+				error("namespace must end with /")
 			end 
 			
 			-- special case, avoids a/b/b when you mean just a/b
@@ -369,7 +405,7 @@
 			else
 				name = prefix .. name
 			end
-		end		
+		end
 		
 		-- get the namespace from the name if it contains one
 		local prevNS = ''
@@ -382,14 +418,14 @@
 		
 		local shortname = name:replace(fullNamespace, '')
 		local fullname = fullNamespace .. shortname
-		return namespaces,shortname,fullname
+		return namespaces, shortname, fullname
 	end
 		
 -- Create a project
 	function project.createproject(name, sln, isUsage)
 	
 		-- Project full name is MySolution/MyProject, shortname is MyProject
-		local namespaces,shortname,fullname = project.getNameParts(name, sln.projectprefix)
+		local namespaces,shortname,fullname = project.getNameParts(name, premake.currentNamespace)
 				
 		-- Now we have the fullname, check if this is already a project
 		if isUsage then
@@ -437,8 +473,8 @@
 		
 		-- Create a default usage project if there isn't one
 		if (not isUsage) and (not project.getUsageProject(prj.name, namespaces)) then
-			if not name:startswith(sln.projectprefix) then
-				name = sln.projectprefix..name
+			if not name:startswith(premake.currentNamespace) then
+				name = premake.currentNamespace..name
 			end
 			project.createproject(name, sln, true)
 		end

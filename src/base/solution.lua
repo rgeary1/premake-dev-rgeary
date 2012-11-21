@@ -40,7 +40,6 @@
 		sln.name           = name
 		sln.basedir        = os.getcwd()			
 		sln.projects       = { }		-- real projects, not usages
-		sln.projectprefix  = prefix		-- default prefix is solution name
 		sln.namespaces     = { name..'/' }
 
 		-- merge in global configuration

@@ -9,6 +9,7 @@
 
 	local api = premake.api
 	global 			= api.global
+	namespace		= api.namespace
 	solution 		= api.solution
 	project 		= api.project
 	usage 			= api.usage

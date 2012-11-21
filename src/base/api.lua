@@ -1274,24 +1274,22 @@
 	--  eg :
 	--   solution "MySoln"
 	--   project "prjA"				-- this is equivalent to project "MySoln/prjA"
-	--	 projectprefix "base"
+	--	 namespace "base"
 	--	 project "prjA" ...			-- this is equivalent to project "base/prjA"
 	--   project "B/prjB" ...		-- this is equivalent to project "base/B/prjB"
-	--	 projectprefix "MySoln/client"
+	--	 namespace "MySoln/client"
 	--	 project "prjA" ...			-- this is equivalent to project "MySoln/client/prjA"
-	--   project "MySoln/client"	-- special case, this is equivalent to project "MySoln/client"
-	api.register {
-		name = "projectprefix",
-		scope = "solution",
-		kind = "string",
-		allowed = function(value)
-			if not value:endswith("/") then
-				return nil, "projectprefix must end with / : "..value..' in '..path.getrelative(repoRoot or '',_SCRIPT)
-			end
-			return value
-		end,
-		namealiases = { "projectPrefix", }
-	}
+	--   project "MySoln/client"	-- special case, this is equivalent to project "MySoln/client"#
+	premake.currentNamespace = ''
+	function api.namespace(n)
+		if not n then return premake.currentNamespace end
+		if type(n) ~= 'string' then error("Namespace must be a string") end
+		if not n:endswith("/") then
+			n = n..'/'
+		end
+		premake.currentNamespace = n
+		return n
+	end
 	
 	-- 
 	-- CPP = Directory which a protobuf project outputs C++ files to (optional) 
@@ -1761,12 +1759,12 @@
   		
   		-- Set the current container
   		premake.CurrentContainer = prj
-		api.scope.project = premake.CurrentContainer
+		api.scope.project = prj
 		  		
 		-- add an empty, global configuration to the project
 		configuration { }
 	
-		return premake.CurrentContainer
+		return prj
 	end
 
 --
@@ -1777,6 +1775,9 @@
 		globalContainer.solution = c
 	end
 
+--
+-- Create a new solution. Also set the current namespace to the solution name
+--
 	function api.solution(name)
 		if not name then
 			if ptype(premake.CurrentContainer) == "project" then
@@ -1793,6 +1794,7 @@
 			sln = premake.solution.get(name)
 		end
 		
+		namespace('/')
 		if (not sln) then
 			sln = premake.solution.new(name)
 		end
@@ -1806,12 +1808,12 @@
 		api.scope.solution = sln
 		api.scope.project = nil
 		
-		-- set the default project prefix
+		-- set the new namespace
 		if name ~= '_GLOBAL_CONTAINER' then	
-			sln.projectprefix = sln.projectprefix or (name..'/')
+			namespace(name..'/')
 		end
 		
-		return premake.CurrentContainer
+		return sln
 	end
 
 --
@@ -2046,7 +2048,7 @@ function release(t, t2)
 	
 	local rel = releases[name]
 	rel.name = name
-	rel.prefix = sln.projectprefix
+	rel.prefix = premake.currentNamespace
 	rel.path = os.getcwd()
 	
 	rel.destinations = rel.destinations or {}
