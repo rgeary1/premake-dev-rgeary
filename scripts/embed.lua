@@ -102,7 +102,7 @@
 		
 		-- Write error wrapper
 		out:write("/* Error handler */\n")
-		out:write("\t\"local builtin_error = error\\nfunction error(fileLine, msg, level) builtin_error((fileLine or '')..msg, level or 0) end\\n\",\n\n")
+		out:write("\t\"local builtin_error = error\\nfunction error(fileLine, msg, level) builtin_error((fileLine or '')..(msg or ''), level or 0) end\\n\",\n\n")
 		
 		for i,fn in ipairs(scripts) do
 			--print(fn)
