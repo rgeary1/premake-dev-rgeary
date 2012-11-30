@@ -23,9 +23,6 @@
 		"base/action.lua",
 		"base/option.lua",
 		"base/tree.lua",
-		"base/project.lua",
-		"base/config.lua",
-		"base/bake.lua",
 		"base/api.lua",
 		"base/toolset.lua",
 		"base/cmdline.lua",
@@ -34,6 +31,11 @@
 		"base/premake.lua",
 		"base/spelling.lua",
 		
+		-- Deprecated
+		--[["base/project.lua",
+		"base/config.lua",
+		"base/bake.lua",
+		]]
 		-- project APIs
 		"project/keyedblocks.lua",
 		"base/globalcontainer.lua",
@@ -55,6 +57,7 @@
 		-- Clean action
 		"actions/clean/_clean.lua",
 
+		--[[
 		-- CodeBlocks action
 		"actions/codeblocks/_codeblocks.lua",
 		"actions/codeblocks/codeblocks_workspace.lua",
@@ -93,7 +96,8 @@
 		
 		-- Xcode4 action
 		"actions/xcode/xcode4_workspace.lua",
-				
+		]]
+		
 		-- Print action
 		"actions/print/_print.lua",
 		

@@ -11,11 +11,13 @@
 	local solution = premake.solution
 	local globalContainer = premake5.globalContainer
 	local keyedblocks = premake.keyedblocks
+	local targets = premake5.targets
 	Print.filterProj = nil
 	Print.level	= 5		-- Print everything
 	
 	Print.fieldLevel = {
 		uses = 1,
+		projectset = 1,
 		compiledepends = 1,
 		includedirs = 1,
 		linkAsStatic = 1,
@@ -49,12 +51,7 @@
 		
 		onsolution 	= function(sln) 
 			if Print.filterProj then return end
-			Print.onSolution(sln) 
-		end,
-		
-		onproject 	= function(prj) 
-			if Print.filterProj then return end
-			Print.onProject(prj) 
+			print("Solution : "..sln.name) 
 		end,
 		
 		execute = function() Print.execute() end
@@ -129,13 +126,13 @@
 			end
 			if not prj and not sln then
 				local suggestions, suggestionStr = project.getProjectNameSuggestions(name, namespaces)
+				print("Could not find "..name)
 				if #suggestions == 1 then
 					name = suggestions[1]
-					print(name)
+					print('Suggested : '..name)
 					local prj = project.getRealProject(name) or project.getUsageProject(name)
 					Print.onProject(prj)
 				else
-					print("Could not find "..name)
 					error(suggestionStr)
 				end
 			end
@@ -149,6 +146,8 @@
 		p5('language', sln.language)
 		p5('basedir', sln.basedir)
 		p5('configurations', sln.configurations)
+		local prjNames = Seq:new(sln.project):getKeys():toTable()
+		p1('Projects', prjNames)
 		indent(-2)
 	end
 	
@@ -197,6 +196,7 @@
 			indent(2)
 
 			p1('kind', cfg.kind)
+			p1('projectset', targets.prjNameToSet[prj.fullname])
 			attachDebugger()
 			local cfg2 = keyedblocks.getconfig(prj, cfg.filter or {}, nil, {})
 			p1('usevariant', cfg.usevariant)

@@ -86,7 +86,10 @@
 			premake.spellCheckEnable(_G, "_G")
 		end
 		
-		local oldNamespace = premake.currentNamespace
+		local oldNamespace
+		if premake.api then
+			oldNamespace = premake.api.scope.currentNamespace
+		end
 		
 		-- run the chunk. How can I catch variable return values?
 		local a, b, c, d, e, f = builtin_dofile(_SCRIPT)

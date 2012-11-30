@@ -204,6 +204,7 @@
 			end
 			return i
 		end
+		return 0
 	end
 
 --

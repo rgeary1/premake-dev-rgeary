@@ -31,7 +31,6 @@
 		if name == '_GLOBAL_CONTAINER' then
 			ptypeSet( sln, "globalcontainer" )
 		else
-			table.insert(targets.solution, sln)
 			targets.solution[name] = sln
 			ptypeSet( sln, "solution" )
 			prefix = name .. '/' 
@@ -41,6 +40,7 @@
 		sln.basedir        = os.getcwd()			
 		sln.projects       = { }		-- real projects, not usages
 		sln.namespaces     = { name..'/' }
+		sln.script		   = _SCRIPT
 
 		-- merge in global configuration
 		local slnTemplate = premake5.globalContainer.solution 
@@ -73,14 +73,9 @@
 --
 
 	function solution.bakeall()
-		local result = {}
-		for i, sln in ipairs(targets.solution) do
-			local bakedSln = solution.bake(sln)
-			
-			result[i] = bakedSln
-			result[sln.name] = bakedSln
+		for _, sln in pairs(targets.solution) do
+			solution.bake(sln)
 		end
-		targets.solution = result
 	end
 
 
@@ -96,7 +91,7 @@
 		
 		-- early out
 		if sln.isbaked then
-			return sln
+			return
 		end
 	
 		sln.isbaked = true
@@ -129,7 +124,7 @@
 			local includeList = {}
 			for _,child in ipairs(sln.includesolution) do
 				if child == '*' then
-					for _,s in ipairs(targets.solution) do
+					for _,s in pairs(targets.solution) do
 						if s.name ~= sln.name then
 							table.insert( includeList, s.name )
 						end
@@ -140,8 +135,6 @@
 			end
 			sln.includesolution = includeList
 		end
-		
-		return sln
 	end
 	
 --
@@ -170,12 +163,10 @@
 --
 
 	function solution.each()
-		local i = 0
+		local sln = nil
 		return function ()
-			i = i + 1
-			if i <= #targets.solution then
-				return targets.solution[i]
-			end
+			sln = table.next(targets.solution, sln)
+			return sln
 		end
 	end
 

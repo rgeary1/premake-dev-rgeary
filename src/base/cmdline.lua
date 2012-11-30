@@ -112,12 +112,6 @@
 	}
 	
 	newoption {
-		trigger		= "exportonly",
-		description = "Only build the projects specified with export",
-		aliases		= { "e" },
-	}
-	
-	newoption {
 		trigger		= "nobuild",
 		description = "Don't build the project, just generate the build scripts",
 		aliases		= { "n" },
@@ -125,8 +119,8 @@
 
 	newoption {
 		trigger		= "define",
-		value		= "=\"Define1 Define2 ...\"",
-		description = 'Build all projects with variant define { "Define1", "Define2", ... }',
+		value		= "\"Define1 Define2 ...\"",
+		description = ' Build all projects with variant define { "Define1", "Define2", ... }',
 		aliases 	= { "d" },
 	}
 	newoption {
@@ -138,4 +132,24 @@
 		trigger 	= "config",
 		value 		= "name",
 		description = "Set the configurations",
+	}
+	newoption {
+		trigger		= "projectset",
+		value		= "set1,set2,...",
+		description = " Only include projects in these project sets. Use \"default\" for projects where projectset is undefined, \"export\" for exported projects.",
+	}
+	newoption {
+		trigger 	= "defaultbuildfile",
+		value		= "premakeFile.lua",
+		description = "Unless otherwise specified, only build projects listed in this premake file (& dependencies)",
+		hide		= true,
+	}
+	newoption {
+		trigger		= "releasedir",
+		value		= "path",
+		description	= "Destination root path to copy the release",
+	}
+	newoption {
+		trigger     = "releaseCopy",
+		description = "Release a copy of the files, not a symlink",
 	}

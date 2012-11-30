@@ -10,8 +10,8 @@ local targets = premake5.targets
 
 local ninjaVarLevel = 2		-- higher = use more ninja build vars
 local toolsetDef = {}
+local prjHasBeenGenerated = {}
 ninja.helpMsg = {}
-local exported = {}
 
 local function mergeTargets(dest, src)
 	for cfgName,targets in pairs(src or {}) do
@@ -112,8 +112,11 @@ function ninja.writeFooter(scope)
 			_p(line..echoNewLine)
 		end
 		local slnList = mkstring(getKeys(scope.slntargets))
+		local cfgList = Seq:new(scope.slntargets)
+			:selectMany(function (v) return getKeys(v) end):unique():mkstring()
 		_p(echoNewLine)
-		_p(' Solutions : '.. slnList..echoNewLine)
+		_p(' Available Solutions : '.. slnList..echoNewLine)
+		_p(' Available Configurations : '.. cfgList..echoNewLine)
 		_p('"')
 		_p('build help: exec\n cmd=echo -e $ninjaHelpMsg\n description=\t')
 		_p('')		
@@ -144,19 +147,26 @@ function ninja.writeDefaultTargets(targetsByCfg)
 			defaultTarget = getKeys(targetsByCfg)
 		end
 		
-		if #defaultTarget > 0 then
-			-- Build all configurations by default
-			_p('# Default build targets')
-			_p('#######################################')
-			_p('')
-			_p('default '..table.concat(defaultTarget, ' '))
-		_p('')
+		if #defaultTarget == 0 then
+			defaultTarget = { 'nothingtobuild' }
 		end
+
+		-- Build all configurations by default
+		_p('# Default build targets')
+		_p('#######################################')
+		_p('')
+		_p('default '..table.concat(defaultTarget, ' '))
+		_p('')
 	end
 end
 
 function ninja.generateProject(prj, scope)
-	if exported[prj] then return exported[prj] end
+	if prjHasBeenGenerated[prj] then return prjHasBeenGenerated[prj] end
+	
+	if not targets.prjToBuild[prj.name] then
+		-- skip this project
+		return nil
+	end
 	
 	if not prj.isUsage and prj.isbaked then
 	
@@ -166,7 +176,7 @@ function ninja.generateProject(prj, scope)
 		ninja.writeToolsets(prj, scope)
 
 		local buildTargets = ninja.writeProjectTargets(prj, scope)
-		exported[prj] = buildTargets
+		prjHasBeenGenerated[prj] = buildTargets
 		return buildTargets
 	else
 		return nil
@@ -255,7 +265,11 @@ function ninja.writeProjectTargets(prj, scope)
 		local linkTool,linkOverrides = ninja.getLinkTool(cfg, scope)
 		if linkTool and not isCommandProject then 
 			if not cfg.kind then
-				error("Malformed project '"..prj.name.."', has no kind specified")
+				if project.inProjectSet(prj, 'export') then
+					error("Malformed project '"..prj.name.."', is exported but undefined")
+				else
+					error("Malformed project '"..prj.name.."', has no kind specified")
+				end
 			end 
 			if not cfg.buildtarget then
 				error("Malformed project '"..prj.name.."', toolset "..cfg.toolset.." requires buildtarget but none specified")
@@ -748,6 +762,9 @@ function ninja.writeExecRule()
 	_p('rule exec')
 	_p(' command=$cmd')
 	_p(' description=$description')
+	_p('build nothingtobuild: exec')
+	_p(' description=Nothing to build!')
+	_p(' cmd=echo -e "\\x1b[1;31mNothing to build!\\x1b[m"')
 	_p('build donothing: phony $builddir/.donothing')
 	_p('build $builddir/.donothing: exec')
 	_p(' cmd=touch $builddir/.donothing')

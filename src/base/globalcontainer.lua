@@ -12,7 +12,11 @@
 	local config = premake5.config
 	targets.prjToBuild = {}		-- prjToBuild[prjName] = prj
 	targets.slnToBuild = {}		-- slnToBuild[slnName] = sln
+	-- Keep track of all dependent projects
 	targets.prjToExport = {}	-- prjToExport[prjName] = prj
+	-- set of projectset names to include. nil = include everything
+	targets.includeProjectSets = nil
+	targets.prjNameToSet = {}	-- prjNameToSet[prjFullname] = set of projectsets containing prj
 	
 --
 -- Apply any command line target filters
@@ -21,36 +25,87 @@
 		local prjToBuild = targets.prjToBuild
 		local slnToBuild = targets.slnToBuild
 		
+		-- Read --projectset= option
+		if _OPTIONS['projectset'] then
+			targets.includeProjectSets = {}
+			local prjsets = _OPTIONS['projectset']:split(',')
+			for _,p in ipairs(prjsets) do
+				if p == 'default' then
+					targets.includeProjectSets[""] = ""
+				end
+				targets.includeProjectSets[p] = p
+			end
+		end
+		
+		-- Read command line args for specified targets
+		local action = premake.action.current()
 		for _,v in ipairs(_ARGS) do
 			if v:endswith('/') then v = v:sub(1,#v-1) end
 			 
 			if not premake.action.get(v) then
+
+				if action.filterProjectsFromCommandLine then
+					action.filterProjectsFromCommandLine(v)
+				else
 				
-				-- Check if any command line arguments are solutions
-				for _,sln in pairs(targets.solution) do
-					if sln.name == v or sln.name:startswith(v..'/') then
-						slnToBuild[sln.name] = sln
-						for _,v2 in ipairs(sln.projects) do
-							prjToBuild[v2.name] = project.getRealProject(v2.name)
+					-- Check if any command line arguments are solutions
+					for _,sln in pairs(targets.solution) do
+						if sln.name == v or sln.name:contains(v..'/') or sln.name:endswith('/'..v) then
+							-- Add solution to the build
+							slnToBuild[sln.name] = sln
 						end
 					end
+					
+					-- Check if any command line arguments are projects
+					local prj = project.getRealProject(v)
+					if prj then
+						prjToBuild[prj.name] = prj
+					end
 				end
-				
-				-- Check if any command line arguments are projects
-				local prj = project.getRealProject(v)
-				if prj then
-					prjToBuild[prj.name] = prj
+			end
+		end
+
+		-- If nothing is specified :
+		if table.isempty(slnToBuild) and table.isempty(prjToBuild) then
+			
+			-- Build default premake file projects
+			if _OPTIONS['defaultbuildfile'] then
+				local defaultScript = path.getabsolute(_OPTIONS['defaultbuildfile'])
+				for _,sln in pairs(targets.solution) do
+					if sln.script == defaultScript and not slnToBuild[sln.name] then
+						print("Build Solution : "..sln.name)
+						slnToBuild[sln.name] = sln
+					end 
+				end
+				for _,prj in pairs(targets.allReal) do
+					if prj.script == defaultScript and not prjToBuild[prj.name] then
+						print("Build Project : "..prj.name)
+						prjToBuild[prj.name] = prj
+					end 
+				end
+			end
+		end
+					
+		-- ... or Build all solutions
+		if table.isempty(slnToBuild) and table.isempty(prjToBuild) then
+			for _,sln in pairs(targets.solution) do
+				slnToBuild[sln.name] = sln
+			end
+		end
+		
+		-- Add solution's projects to the build
+		for _,sln in pairs(slnToBuild) do
+			for _,prj in ipairs(sln.projects) do
+			
+				-- Filter to selected project sets
+				if not prj.isUsage and project.inProjectSet(prj, targets.includeProjectSets) then
+					prjToBuild[prj.name] = project.getRealProject(prj.name)
 				end
 			end
 		end
 		
-		if table.isempty(slnToBuild) and table.isempty(prjToBuild) then
-			for _,sln in ipairs(targets.solution) do
-				slnToBuild[sln.name] = sln
-			end
-			for _,prj in pairs(targets.allReal) do
-				prjToBuild[prj.name] = prj
-			end
+		if table.isempty(prjToBuild) then
+			print("Warning : No projects in the selection!")
 		end		
 	end
 

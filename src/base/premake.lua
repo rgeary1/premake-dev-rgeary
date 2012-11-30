@@ -18,6 +18,8 @@
 	export 			= api.export
 	buildvariant	= api.buildvariant
 	usevariant		= api.usevariant
+	release			= api.release
+	projectset		= api.projectset
 
 --
 -- Define some commonly used symbols, for future-proofing.

@@ -20,17 +20,19 @@
 		for option in premake.option.each() do
 			local trigger = option.trigger
 			local description = option.description
-			if (option.value) then trigger = trigger .. "=" .. option.value end
-			if (option.aliases) then
-				local aliasStr = table.concat( option.aliases, ', -' )
-				trigger = trigger .. ", -" .. aliasStr
-			end
-			if (option.allowed) then description = description .. "; one of:" end
-			
-			printf(" --%-15s %s", trigger, description) 
-			if (option.allowed) then
-				for _, value in ipairs(option.allowed) do
-					printf("     %-14s %s", value[1], value[2])
+			if not option.hide then
+				if (option.value) then trigger = trigger .. "=" .. option.value end
+				if (option.aliases) then
+					local aliasStr = table.concat( option.aliases, ', -' )
+					trigger = trigger .. ", -" .. aliasStr
+				end
+				if (option.allowed) then description = description .. "; one of:" end
+				
+				printf(" --%-15s %s", trigger, description) 
+				if (option.allowed) then
+					for _, value in ipairs(option.allowed) do
+						printf("     %-14s %s", value[1], value[2])
+					end
 				end
 			end
 		end

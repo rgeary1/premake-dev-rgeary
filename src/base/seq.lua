@@ -293,15 +293,17 @@ function Seq:skipuntil(cond)
 	s.iterate = function()
 		-- setup
 		local iter = self.iterate()
+		local found = false
 		-- moveNext
 		return function()
 			while true do
 				local k,v = iter()
-				if (not k) or (not cond(v)) then
-					break
+				if found or (not k) or (cond(v)) then
+					found = true
+					return k,v
 				end
 			end
-			return k,v
+			return nil
 		end
 	end
 	return s
@@ -463,7 +465,11 @@ end
 function Seq:toTable()
 	local t = {}
 	for k,v in self:each() do
-		t[k] = v
+		if type(k) == 'number' then
+			table.insert(t, v)
+		else
+			t[k] = v
+		end
 	end
 	return t
 end

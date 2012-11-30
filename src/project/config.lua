@@ -36,8 +36,8 @@
 				table.insert(parts, config.getcasedvalue(v))
 			end
 		end
-		table.sort(parts)
 		if #parts > 0 then
+			table.sort(parts)
 			cfgName = cfgName..'.'..table.concat(parts,'.')
 		end
 		
@@ -183,7 +183,7 @@
 --
 
 	local function buildtargetinfo(cfg, kind, field)
-		if kind == 'SourceGen' then
+		if kind == 'Command' then
 			return {}
 		end
 	
@@ -216,7 +216,11 @@
 		local info = {}
 		info.directory  = project.getrelative(cfg.project, directory)
 		info.basename   = basename .. suffix
-		info.name       = prefix .. info.basename .. extension
+		info.name       = info.basename .. extension
+		if not info.name:startswith(prefix) then
+			-- if the project is called libX, avoid naming the target file liblibX
+			info.name = prefix .. info.name
+		end
 		info.extension  = extension
 		info.abspath    = path.join(directory, info.name)
 		info.fullpath   = path.join(info.directory, info.name)

@@ -212,8 +212,9 @@
 			project 			 = api.scope.project,
 			configuration 		 = api.scope.configuration,
 			alsoPushToUsage		 = api.scope.alsoPushToUsage,
+			currentNamespace     = api.scope.currentNamespace,  			
 			currentContainer 	 = premake.CurrentContainer,
-			currentConfiguration = premake.CurrentConfiguration,  			
+			currentConfiguration = premake.CurrentConfiguration,
 		}
 		table.insert( api.scopeStack, s )
 	end
@@ -594,12 +595,10 @@
 				local v = value:split(' ')
 				addvalue(v, depth + 1)
 			else
-				if field.uniqueValues then
-					if target[value] then
-						return
-					end
-					target[value] = true
-				end			
+				if target[value] then
+					return
+				end
+				target[value] = value
 				setter(target, #target + 1, field, value)
 			end
 		end
@@ -1280,14 +1279,14 @@
 	--	 namespace "MySoln/client"
 	--	 project "prjA" ...			-- this is equivalent to project "MySoln/client/prjA"
 	--   project "MySoln/client"	-- special case, this is equivalent to project "MySoln/client"#
-	premake.currentNamespace = ''
+	api.scope.currentNamespace = ''
 	function api.namespace(n)
-		if not n then return premake.currentNamespace end
+		if not n then return api.scope.currentNamespace end
 		if type(n) ~= 'string' then error("Namespace must be a string") end
 		if not n:endswith("/") then
 			n = n..'/'
 		end
-		premake.currentNamespace = n
+		api.scope.currentNamespace = n
 		return n
 	end
 	
@@ -1756,6 +1755,7 @@
 
   		-- if this is a new project, create it
   		local prj = premake5.project.createproject(name, sln, false)
+  		prj.script = _SCRIPT
   		
   		-- Set the current container
   		premake.CurrentContainer = prj
@@ -1984,8 +1984,12 @@
 		sln.exports = sln.exports or {}
 		sln.exports[aliasName] = fullProjectName
 		
-		-- solution's usage requirements include exported projects
 		api.scopepush()
+		
+			-- set projectset
+			api.projectset("export", fullProjectName)
+		
+			-- solution's usage requirements include exported projects
 			usage(sln.name..'/'..sln.name)
 			uses(aliasName)
 		api.scopepop()
@@ -2002,25 +2006,51 @@
 			prj.isExplicit = true
 		end
 	end
+	
+	-- If this is set, the project will have this projectset "label".
+	-- Specifying --projectset=x,y,... on the command line will only include projects in these sets
+	-- Projects without projectset defined are always included
+	-- needs to be external from the project, as we can set the projectset before declaring the project
+	function api.projectset(prjSetName, prjFullname)
+		if not prjFullname then
+			if not api.scope.project then
+				error("Unable to call projectset without an active or specified project")
+			end
+			prjFullname = api.scope.project.fullname
+		end
+		targets.prjNameToSet[prjFullname] = targets.prjNameToSet[prjFullname] or {}
+		targets.prjNameToSet[prjFullname][prjSetName] = prjSetName		 
+	end
 
 --*************************************************************************************
 -- Releases
 --
 -- Example usage :
+--  Specify the target directory
 --  releasedir { name = "bin", path = "/usr/bin", perms = "755" }
+
+-- Specify the files to release
 --  release {
 --   name = "MyRelease",
 --   bin = "file-to-put-in-bin-dir.ext someProject",
 --   rootBin = { "putInUsrBin", perms = 755 },
 --   conf = "someConf.conf"
 --  }
+
 -- or
 --  release("MyRelease", "projA projB")	 -- default output to bin
--- or
---  release( { name = "prjA-scripts", bin = { "$root/prjA/scripts/dump.pl", rootdir='$root/prjA' } } ) 
+
+-- or keep the directory structure - output dump.pl to releaseDir/scripts/dump.pl
+--  release { 
+--		name = "prjA-scripts", 
+--		bin = { 
+--			"$root/prjA/scripts/dump.pl", 
+--			rootdir='$root/prjA' 
+--		} 
+--	} 
 --*************************************************************************************
 
-function release(t, t2)
+function api.release(t, t2)
 	local sln = api.scope.solution
 	if not sln then
 		error("No active solution")
@@ -2048,7 +2078,7 @@ function release(t, t2)
 	
 	local rel = releases[name]
 	rel.name = name
-	rel.prefix = premake.currentNamespace
+	rel.namespace = api.scope.currentNamespace
 	rel.path = os.getcwd()
 	
 	rel.destinations = rel.destinations or {}

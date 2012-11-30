@@ -68,6 +68,12 @@
 		if not prj.isbaked then
 			project.bake(prj)
 		end
+		
+		-- Make sure this is in the build list
+		if not targets.prjToBuild[prj.name] then
+			-- this branch will happen if you've got a projectset with outside dependencies
+			targets.prjToBuild[prj.name] = prj
+		end
 
 		local tmr = timer.start('project.addconfig')
 		
@@ -425,7 +431,7 @@
 	function project.createproject(name, sln, isUsage)
 	
 		-- Project full name is MySolution/MyProject, shortname is MyProject
-		local namespaces,shortname,fullname = project.getNameParts(name, premake.currentNamespace)
+		local namespaces,shortname,fullname = project.getNameParts(name, premake.api.scope.currentNamespace)
 				
 		-- Now we have the fullname, check if this is already a project
 		if isUsage then
@@ -473,8 +479,8 @@
 		
 		-- Create a default usage project if there isn't one
 		if (not isUsage) and (not project.getUsageProject(prj.name, namespaces)) then
-			if not name:startswith(premake.currentNamespace) then
-				name = premake.currentNamespace..name
+			if not name:startswith(premake.api.scope.currentNamespace) then
+				name = premake.api.scope.currentNamespace..name
 			end
 			project.createproject(name, sln, true)
 		end
@@ -899,4 +905,26 @@
 	function project.isdotnetproject(prj)
 		local language = prj.language or prj.solution.language
 		return language == "C#"
+	end
+
+	-- returns true if the project is in the set s
+	function project.inProjectSet(prj, s)
+		
+		if s == nil then return true end
+		
+		if type(s) == 'table' then
+			-- Return true if the project is in any of the values in table s
+			for _,v in pairs(s) do
+				if project.inProjectSet(prj, v) then 
+					return true 
+				end
+			end
+			return false
+		else
+			local prjset = targets.prjNameToSet[prj.fullname]
+			if not prjset then 
+				return false 
+			end
+			return prjset[s]
+		end
 	end
