@@ -234,7 +234,10 @@ local tmr=timer.start('oven.expandvalue')
 			
 			-- give the function access to the project objects
 			setfenv(func, context)
-			setmetatable(context, {__index = _G})
+			setmetatable(context, {__index = function(self,key) 
+				return rawget(_G, key) 
+			end 
+			})
 
 			-- run it and return the result
 			local err, result = pcall(func)
@@ -261,8 +264,11 @@ local tmr=timer.start('oven.expandvalue')
 			value, count = string.gsub(value, "%%{(.-)}", function(token)			
 				local result, err = expander(token)
 				if not result then
-					local location = (context.sln.name or '') ..'/'..(context.prj.name or '')..'/'..(context.cfg.shortname or '')
-					error(err .. ' in ' .. value..' at '..location, 0)
+					local location = ((context.sln or {}).name or '') ..'/'
+						..((context.prj or {}).name or '')..'/'
+						..((context.cfg or {}).shortname or '')
+					print("Token expansion error : "..err .. ' in ' .. value..' at '..location, 0)
+					os.exit(1)
 				end
 				return result
 			end)

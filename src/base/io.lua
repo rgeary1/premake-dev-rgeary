@@ -4,6 +4,21 @@
 -- Copyright (c) 2008-2009 Jason Perkins and the Premake project
 --
 
+--
+-- Get the file size of an open file, in bytes
+--
+	function io.getsize(fileHandle)
+		if type(fileHandle) ~= 'userdata' then
+			error("io.getsize requires a file handle, received "..type(fileHanle))
+		end
+		if io.type(fileHandle) ~= 'file' then
+			error("io.getsize file handle is " .. tostring(io.type(fileHandle)) )
+		end
+		local pos = fileHandle:seek("cur", 0)
+		local fileSize = fileHandle:seek("end", 0)
+		fileHandle:seek("set", pos)
+		return fileSize
+	end
 
 --
 -- Prepare to capture the output from all subsequent calls to io.printf(), 

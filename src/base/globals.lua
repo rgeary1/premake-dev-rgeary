@@ -62,50 +62,51 @@
 
 	local builtin_dofile = dofile
 	function dofile(fname, enableSpellCheck)
-		-- remember the current working directory and file; I'll restore it shortly
-		local oldcwd = os.getcwd()
-		local oldfile = _SCRIPT
-
-		-- if the file doesn't exist, check the search path
-		if (not os.isfile(fname)) then
-			local path = os.pathsearch(fname, _OPTIONS["scripts"], os.getenv("PREMAKE_PATH"))
-			if (path) then
-				fname = path.."/"..fname
+		local oldcwd, oldfile		
+		
+		local function setup()
+			-- remember the current working directory and file; I'll restore it shortly
+			oldcwd = os.getcwd()
+			oldfile = _SCRIPT
+	
+			-- if the file doesn't exist, check the search path
+			if (not os.isfile(fname)) then
+				local path = os.pathsearch(fname, _OPTIONS["scripts"], os.getenv("PREMAKE_PATH"))
+				if (path) then
+					fname = path.."/"..fname
+				end
+			end
+	
+			-- use the absolute path to the script file, to avoid any file name
+			-- ambiguity if an error should arise
+			_SCRIPT = path.getabsolute(fname)
+			
+			-- switch the working directory to the new script location
+			local newcwd = path.getdirectory(_SCRIPT)
+			os.chdir(newcwd)
+			
+			if enableSpellCheck then
+				premake.spellCheckEnable(_G, "_G")
+			end
+			
+			if premake.isLoaded then
+				local sln = premake.api.scope.solution or {}
+				local slnNamespace
+				if ptype(sln) == 'solution' then 
+					slnNamespace = sln.namespaces
+				else
+					slnNamespace = { '/' }
+				end
+				premake.api.namespace(slnNamespace)
 			end
 		end
-
-		-- use the absolute path to the script file, to avoid any file name
-		-- ambiguity if an error should arise
-		_SCRIPT = path.getabsolute(fname)
+		setup()
 		
-		-- switch the working directory to the new script location
-		local newcwd = path.getdirectory(_SCRIPT)
-		os.chdir(newcwd)
-		
-		if enableSpellCheck then
-			premake.spellCheckEnable(_G, "_G")
-		end
-		
-		local oldNamespace
-		if premake.api then
-			oldNamespace = premake.api.scope.currentNamespace
-		end
+		--printDebug("Include : ".._SCRIPT)
 		
 		-- run the chunk. How can I catch variable return values?
 		local a, b, c, d, e, f = builtin_dofile(_SCRIPT)
 		
-		if premake.api then
-			-- end any namespace override
-			premake.api.namespace(oldNamespace)
-		end
-		
-		if premake.clearActiveProjectOnNewFile and premake.api then
-			-- close the project scope
-			premake.api.scope.configuration = nil
-			premake.api.scope.project = nil
-			premake.CurrentContainer = premake.api.scope.solution
-			premake.CurrentConfiguration = nil
-		end
 
 		if enableSpellCheck then
 			premake.spellCheckDisable(_G)
@@ -140,37 +141,53 @@
 --
 
 	io._includedFiles = { }
-	
-	function include(filename)
-		-- if a directory, load the premake script inside it
-		if os.isdir(filename) then
-			local dir = filename
-			filename = path.join(dir, "premake4.lua")
-			
-			if not os.isfile(filename) then
-				local files = os.matchfiles(path.join(dir,'premake*.lua'))
-				if #files > 0 then
-					filename = files[1]
+	local helpMessageCount = 0
+		
+	function include(fileOrDir)
+
+		local function includeFiles(files)
+            if type(files) == 'string' then files = { files } end
+			for _,filename in ipairs(files) do
+				filename = path.getabsolute(filename)
+				if not io._includedFiles[filename] then
+					io._includedFiles[filename] = true
+					dofile(filename)
+				else
+					if os.getcwd() ~= repoRootPlain then
+						if helpMessageCount < 3 then
+							print("Including a directory manually is now unnecessary : include \""..path.getname(filename).."\" in ".._SCRIPT)
+						elseif helpMessageCount == 3 then
+							print("...")
+						end
+						helpMessageCount = helpMessageCount + 1
+					end
 				end
-			end
+			end			
+		end
+
+		-- if a directory, recursively load all premake scripts inside it
+		if os.isdir(fileOrDir) then
 			
-		end
-		if not os.isfile(filename) then
-			error('Could not find include "'..filename ..'" in file "'.._SCRIPT..'"')
-		end
-				
-		-- but only load each file once
-		filename = path.getabsolute(filename)
-		if not io._includedFiles[filename] then
-			io._includedFiles[filename] = true
-			dofile(filename)
+			premake.api.scopePush()
+		
+			local rdir = os.readlink(fileOrDir) 
+			local dir = rdir or fileOrDir
+			local files = os.matchfiles(dir..'/premake*.lua')
+			includeFiles(files)
+			local subdirFiles = os.matchfiles(dir..'/**/premake*.lua')
+			includeFiles(subdirFiles)
+			
+			premake.api.scopePop()
+			
+               elseif os.isfile(fileOrDir) then
+			local filename = fileOrDir
+					
+			-- but only load each file once
+			includeFiles(filename, true)
+		else
+			error('Could not find include "'..fileOrDir ..'" in file "'.._SCRIPT..'"')
 		end
 	end
-
---
--- For printing in quiet mode
---
-	_G.printAlways = _G.print
 
 --
 -- A shortcut for printing formatted output.
@@ -414,8 +431,8 @@
 	function mkstring(t, delimiter, seen)
 		delimiter = delimiter or ' '
 		seen = seen or {}
-		if not t then
-			error("table is nil")
+		if t == nil then
+			return 'nil'
 		end
 		if seen[t] then
 			return seen[t]
@@ -542,4 +559,4 @@
 			end
 		end
 		return rv
-	end
+       end

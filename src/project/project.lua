@@ -74,8 +74,6 @@
 			-- this branch will happen if you've got a projectset with outside dependencies
 			targets.prjToBuild[prj.name] = prj
 		end
-
-		local tmr = timer.start('project.addconfig')
 		
 		prj.configs = prj.configs or {}
 		
@@ -91,7 +89,7 @@
 		if finalBuildVariant['__buildinprogress'] then 
 			return { }
 		end
-		
+
 		local finalBuildName = config.getBuildName(finalBuildVariant)
 
 		-- Return the config if it's already baked
@@ -107,8 +105,20 @@
 			--print("Can't create 'All' build variant for regular project "..prj.name)
 			return {}
 		end
-		
+
+		if not addedVariants[finalBuildName] then
+			addedVariants[finalBuildName] = finalBuildName
+			if finalBuildName ~= 'All' then
+				if #keyedblocks.active > 0 then
+					printDebug("Added variant "..finalBuildName .. ' used by '..keyedblocks.active[#keyedblocks.active].name)
+				else
+					printDebug("Added variant "..finalBuildName)
+				end
+			end
+		end				
 		--printDebug("Baking "..prj.name..':'..finalBuildName)
+		
+		local tmr = timer.start('project.addconfig')
 		
 		-- Get the config filter for this build variant
 		local filter = keyedblocks.getfilter(prj, finalBuildVariant)
@@ -123,13 +133,6 @@
 		-- Add to the list of configs		
 		prj.configs[finalBuildName] = cfg
 
-
-		if not addedVariants[finalBuildName] then
-			addedVariants[finalBuildName] = finalBuildName
-			if finalBuildName ~= 'All' then
-				printDebug("Added variant "..finalBuildName)
-			end
-		end		
 		--printDebug("Baked "..prj.name..':'..finalBuildName)
 		
 		-- Add the build variants to the map
@@ -138,7 +141,9 @@
 				
 		-- Add usage requirements for the new configuration
 		local uProj = project.getUsageProject(prj.name)
-		config.addUsageConfig(prj, uProj, finalBuildVariant)
+		if uProj then
+			config.addUsageConfig(prj, uProj, finalBuildVariant)
+		end
 		
 		timer.stop(tmr)
 		
@@ -163,13 +168,21 @@
 	function project.getDefaultBuildVariant(prj)
 		local defaultcfg
 		if _OPTIONS['config'] then
-			defaultcfg = _OPTIONS['config'][1]
+			defaultcfg = _OPTIONS['config']:split(',')[1]
 		else
 			defaultcfg = prj.defaultconfiguration or (prj.solution or {}).defaultconfiguration
 		end
 		if not defaultcfg then
 			return nil
 		end
+		if _OPTIONS['define'] then
+			local define = _OPTIONS['define']
+			local buildVariant = { 
+				buildcfg = defaultcfg,
+			 	[define] = define, 
+			}
+			defaultcfg = config.getBuildName(buildVariant)
+		end		
 		
 		local defaultBuildVariant = prj.buildVariantMap[defaultcfg]
 		
@@ -252,15 +265,24 @@
 
 	local function getProject(allProjects, name, namespaces)
 		local prj = allProjects[name]
-		
-		-- convert namespace from string to array
-		if type(namespaces) == 'string' then
-			local namespace = namespaces
-			namespaces = {}
-			local prevNS = ''
-			for n in namespace:gmatch("[^/]+/") do
-				table.insert(namespaces, prevNS..n)
-				prevNS = prevNS..n
+		if prj then return prj end
+
+		if namespaces and name:contains("/") then
+			if type(namespaces) == 'string' then
+				namespaces = { namespaces }
+			else
+				namespaces = namespaces[#namespaces]
+			end
+		else
+		 	-- convert namespace from string to array
+			if type(namespaces) == 'string' then
+				local namespace = namespaces
+				namespaces = {}
+				local prevNS = ''
+				for n in namespace:gmatch("[^/]+/") do
+					table.insert(namespaces, prevNS..n)
+					prevNS = prevNS..n
+				end
 			end
 		end
 
@@ -282,9 +304,9 @@
 		-- check supplied implicit namespaces
 		if not prj and namespaces then
 			local possibles = {}
-			for _,namespace in ipairs(namespaces) do
+			for _,ns in ipairs(namespaces) do
 				-- Try prepending the namespace
-				local tryName = namespace..name
+				local tryName = ns..name
 				local i = 0
 				while targets.aliases[tryName] do
 					tryName = targets.aliases[tryName]
@@ -338,11 +360,13 @@
 		if #suggestions == 0 then
 			-- check for misspellings
 			local allUsageNames = Seq:new(targets.aliases):concat(targets.allUsage):getKeys():toTable()
-			local spell = premake.spelling.new(allUsageNames)
-
-			suggestions = spell:getSuggestions(name)
-			if #suggestions == 0 then
-				suggestions = spell:getSuggestions(fullname)
+			local spell,count = premake.spelling.new(allUsageNames)
+			
+			if count < 10 then
+				suggestions = spell:getSuggestions(name)
+				if #suggestions == 0 then
+					suggestions = spell:getSuggestions(fullname)
+				end
 			end
 		end
 
@@ -370,6 +394,7 @@
 	function project.getNameParts(name, namespace)
 		local shortname = name
 		namespace = namespace or '/'
+
 		local fullname = name
 
 		if name:find('/') then
@@ -379,7 +404,9 @@
 
 		if not namespace:endswith('/') then
 			error("namespace must end with /")
-		end 
+		end
+		
+		if namespace:startswith('/') then namespace = namespace:sub(2, #namespace-1) end 
 		
 		-- special case for fully specified names, avoids a/b/b when you mean just a/b
 		if not name:startswith(namespace) then
@@ -389,57 +416,21 @@
 		return namespace, shortname, fullname
 	end
 
-	--
-	-- DELETE ME
-	--	
-	function project.xgetNameParts(name, namespaces)
-		namespaces = namespaces or {}
-		
-		if namespaces then
-			local prefix
-			if type(namespaces) == 'table' then
-				prefix = namespaces[#namespaces]
-			end
-			
-			if not prefix:endswith('/') then
-				error("namespace must end with /")
-			end 
-			
-			-- special case, avoids a/b/b when you mean just a/b
-			if name:startswith(prefix) then
-				prefix = nil
-			else
-				name = prefix .. name
-			end
-		end
-		
-		-- get the namespace from the name if it contains one
-		local prevNS = ''
-		for n in name:gmatch("[^/]+/") do
-			n = prevNS .. n
-			table.insert(namespaces, n)
-			prevNS = n
-		end
-		local fullNamespace = namespaces[#namespaces] or '' 
-		
-		local shortname = name:replace(fullNamespace, '')
-		local fullname = fullNamespace .. shortname
-		return namespaces, shortname, fullname
-	end
-		
 -- Create a project
 	function project.createproject(name, sln, isUsage)
 	
 		-- Project full name is MySolution/MyProject, shortname is MyProject
-		local namespaces,shortname,fullname = project.getNameParts(name, premake.api.scope.currentNamespace)
+		local namespace,shortname,fullname
+		
+		if isUsage and premake.api.scope.currentNamespace:sub(1,#name) == name then
+			local namespace = premake.api.scope.currentNamespace
+			fullname = name
+		else
+			namespace,shortname,fullname = project.getNameParts(name, premake.api.scope.currentNamespace)
+		end
 				
 		-- Now we have the fullname, check if this is already a project
 		if isUsage then
-			-- If it's not an existing project, assume name is the fullname & don't prepend the solution prefix
-			if not targets.allReal[fullname] then
-				fullname = name
-			end
-		
 			local existing = targets.allUsage[fullname]
 			if existing then return existing end
 			
@@ -467,22 +458,20 @@
 		end
 		
 		prj.solution       = sln
-		prj.namespaces     = namespaces
+		prj.namespaces     = namespace
 		prj.name           = fullname
 		prj.fullname       = fullname
 		prj.shortname      = shortname
 		prj.basedir        = os.getcwd()
+		prj.dirFromRoot    = path.asRoot(prj.basedir):replace("$root/","")
 		prj.script         = _SCRIPT
 		prj.uuid           = os.uuid()
 		prj.blocks         = { }
 		prj.isUsage		   = isUsage;
 		
 		-- Create a default usage project if there isn't one
-		if (not isUsage) and (not project.getUsageProject(prj.name, namespaces)) then
-			if not name:startswith(premake.api.scope.currentNamespace) then
-				name = premake.api.scope.currentNamespace..name
-			end
-			project.createproject(name, sln, true)
+		if (not isUsage) and (not project.getUsageProject(fullname, prj.namespaces)) then
+			project.createproject(fullname, sln, true)
 		end
 		
 		return prj;

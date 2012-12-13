@@ -30,10 +30,39 @@
 
 --
 -- Split is similar to explode, but with a better name & default delimiters
+--  split also preserves delimiters within double quotes "" or %{ } 
 --
-	function string.split(s, delimiters, ignoreRepeatedDelimiters)
-		local pattern = (delimiters or ", \t\n|") 
-		return string.explode(s, '['..pattern..']', false, ignoreRepeatedDelimiters)
+	local splitCache = {}
+	function string.split(s, delimiters)
+		-- memo cache
+		delimiters = delimiters or ", \t\n|"
+		splitCache[delimiters] = splitCache[delimiters] or {}
+		local cache = splitCache[delimiters]
+		if cache[s] then return cache[s] end
+		
+		local pattern = '['..delimiters..'"%%]'
+		local searchPos = 0
+		local copyFrom = 0
+		local rv = { }
+		for pstart,pend in function() return s:find(pattern, searchPos) end do
+			if s:sub(pstart, pstart+1) == '%{' then
+				searchPos = (s:find("}",pend+1) or searchPos)+1
+			elseif s:sub(pstart,pstart) == '"' then
+				searchPos = (s:find('\"',pend+1) or searchPos)+1
+			else
+				if copyFrom <= pstart-1 then
+					table.insert( rv, s:sub(copyFrom, pstart-1) )
+				end
+				copyFrom = pend+1
+				searchPos = pend+1
+			end
+		end
+		if #s >= copyFrom then
+			table.insert(rv, s:sub(copyFrom))
+		end
+		cache[s] = rv
+		
+		return rv
 	end	
 
 

@@ -3,7 +3,7 @@
 -- Interface for the C# compilers, all of which are flag compatible.
 -- Copyright (c) 2002-2009 Jason Perkins and the Premake project
 --
-
+--[[ Deprecated
 	
 	premake.dotnet = { }
 	premake.dotnet.namestyle = "windows"
@@ -88,3 +88,4 @@
 			return "Library"
 		end
 	end
+]]

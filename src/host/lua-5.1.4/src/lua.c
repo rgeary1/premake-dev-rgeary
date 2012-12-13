@@ -36,6 +36,7 @@ static void laction (int i) {
   lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
 }
 
+#ifdef LUA_C_MAIN
 
 static void print_usage (void) {
   fprintf(stderr,
@@ -51,7 +52,7 @@ static void print_usage (void) {
   progname);
   fflush(stderr);
 }
-
+#endif
 
 static void l_message (const char *pname, const char *msg) {
   if (pname) fprintf(stderr, "%s: ", pname);
@@ -105,11 +106,11 @@ static int docall (lua_State *L, int narg, int clear) {
   return status;
 }
 
+#ifdef LUA_C_MAIN
 
 static void print_version (void) {
   l_message(NULL, LUA_RELEASE "  " LUA_COPYRIGHT);
 }
-
 
 static int getargs (lua_State *L, char **argv, int n) {
   int narg;
@@ -146,7 +147,7 @@ static int dolibrary (lua_State *L, const char *name) {
   lua_pushstring(L, name);
   return report(L, docall(L, 1, 1));
 }
-
+#endif
 
 static const char *get_prompt (lua_State *L, int firstline) {
   const char *p;
@@ -209,6 +210,8 @@ static int loadline (lua_State *L) {
   lua_remove(L, 1);  /* remove line */
   return status;
 }
+
+#ifdef LUA_C_MAIN
 
 static int handle_script (lua_State *L, char **argv, int n) {
   int status;
@@ -310,7 +313,6 @@ struct Smain {
   int status;
 };
 
-
 static int pmain (lua_State *L) {
   struct Smain *s = (struct Smain *)lua_touserdata(L, 1);
   char **argv = s->argv;
@@ -346,8 +348,6 @@ static int pmain (lua_State *L) {
   }
   return 0;
 }
-
-#ifdef LUA_C_MAIN
 
 int main (int argc, char **argv) {
   int status;

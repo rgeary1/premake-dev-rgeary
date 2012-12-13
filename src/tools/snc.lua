@@ -3,6 +3,7 @@
 -- Provides Sony SNC-specific configuration strings.
 -- Copyright (c) 2010-2012 Jason Perkins and the Premake project
 --
+--[[ Deprecated
 
 	premake.tools.snc = {}
 	local snc = premake.tools.snc
@@ -252,3 +253,4 @@
 		end
 		return result
 	end
+]]

@@ -11,6 +11,8 @@ local project = premake5.project
 local oven = premake5.oven
 local config = premake5.config
 
+keyedblocks.active = {}		 -- for logging
+
 --
 -- Expand any 'a or b' statements, and sort each term within the term set 
 function keyedblocks.expandTerms(terms)
@@ -185,12 +187,21 @@ function keyedblocks.resolveUses(kb, obj)
 				useProj, suggestions = keyedblocks.getUsage(useProjName, obj.namespaces)
 				if not useProj then
 					local errMsg = '\nCould not find usage "'..tostring(useProjName)..'" ' ..
-					"for project "..tostring(obj.name) ..' at ' .. tostring(obj.basedir)
+					"for "..ptype(obj).." "..tostring(obj.name) ..' at ' .. tostring(obj.basedir)
+					if obj.namespaces then
+						errMsg = errMsg .. '\n' .. "Current namespaces : "..mkstring(obj.namespaces)
+					end
 					if suggestions then
 						errMsg = errMsg .. '"\n' .. suggestions
 					end
-				useProj, suggestions = keyedblocks.getUsage(useProjName, obj.namespaces)
-					error(errMsg)
+					local debug = debuggerIsAttached
+					if debug then
+						useProj, suggestions = keyedblocks.getUsage(useProjName, obj.namespaces)
+					end
+					print(errMsg)
+					if _ACTION ~= 'print' then
+						os.exit(1)
+					end
 				end
 				kb.__uses[useProjName] = { prj = useProj, usefeature = usefeature }
 			end
@@ -202,10 +213,6 @@ function keyedblocks.getUsage(name, namespaces)
 	local suggestions, suggestionStr
 
 	local usage = project.getUsageProject(name, namespaces)
-	if not usage then
-		-- check if it's a solution usage
-		usage = project.getUsageProject(name..'/'..name)
-	end
 
 	if not usage then
 		suggestions, suggestionStr = project.getProjectNameSuggestions(name, namespaces)
@@ -321,7 +328,10 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	end
 
 	local tmr = timer.start('keyedblocks.getconfig')
+	local ignore = toSet({ '__config', '__name', '__parent', '__uses', '__cache', '__usesconfig' })
 	local kbBase = obj.keyedblocks
+	
+	table.insert( keyedblocks.active, obj )
 
 	-- Find the values & .removes structures which apply to 'keywords'
 	local accessedBlocks = {}
@@ -362,7 +372,7 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 					keyedblocks.bake(p.prj, filter)
 					findBlocks(p.prj.keyedblocks)
 					
-				else
+				elseif p.prj then
 					keyedblocks.bake(p.prj, filter)
 					findBlocks(p.prj.keyedblocks)
 				end
@@ -372,7 +382,12 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 		end
 
 		-- Found some values to add/remove
-		table.insert( foundBlocks, kb )
+		for k,v in pairs(kb) do
+			if not ignore[k] then
+				table.insert( foundBlocks, kb )
+				break
+			end
+		end
 
 		-- Iterate through the filters and apply any blocks that match
 		if kb.__config then
@@ -417,17 +432,17 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	end
 	kbBase.__cache[filterStr] = foundBlocks
 
+	--printDebug("getconfig "..obj.name.." size "..#foundBlocks)
+
 	if not fieldName then
 		rv.filter = table.shallowcopy(filter)
 	end
 
-	timer.start('applyvalues')
 	-- Filter values structures
 	local isEmpty = table.isempty(foundBlocks)
 	--insertBlockList(rv, foundBlocks)
 
 	local removes = {}
-	local ignore = toSet({ '__config', '__name', '__parent', '__uses', '__cache' })
 	for _,block in ipairs(foundBlocks) do
 		if not fieldName then
 			for k,v in pairs(block) do
@@ -487,6 +502,8 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	if rv.alwaysdefines then
 		oven.mergefield(rv, 'defines', rv.alwaysdefines) 
 	end	
+	
+	table.remove( keyedblocks.active )
 			
 	timer.stop(tmr)
 	
@@ -497,6 +514,71 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	else
 		return rv
 	end
+end
+
+function keyedblocks.bakeUsesConfig(kb, accessed)
+	if accessed[kb] then return {} end
+	accessed[kb] = true
+	
+	if kb.__usesconfig then
+		return kb.__usesconfig
+	end
+	
+	local uc = {}
+	-- parent
+	if kb.__parent then
+		table.insertflat( uc, keyedblocks.bakeUsesConfig(kb.__parent, accessed) )
+	end
+	
+	-- uses
+	for useProjName, p in pairs(kb.__uses or {}) do
+
+		if not p.keyedblocks then
+			if ptype(p) == 'project' then
+				globalContainer.bakeUsageProject(p)
+			else
+				keyedblocks.create(usage)
+			end
+		end
+		
+		table.insertflat( uc, keyedblocks.bakeUsesConfig(p, accessed) )
+	end
+	
+	-- returns a list of functions which you call with the filter to return the usesconfigs
+	function genFindUsesConfig(kb2)
+		local rv = {}
+		if kb2.usesconfig then
+			local func = function(filter)
+				return kb2.usesconfig
+			end
+			table.insert( rv, func )
+		end
+		for term,kbTerm in pairs(kb2.__config or {}) do
+			for _,vfn in ipairs(genFindUsesConfig(kbTerm)) do
+				local func = function(filter) 
+					if filter[term] then
+						return vfn()
+					end
+				end
+				table.insert( rv, func )
+			end
+		end
+		for term,kbTerm in pairs(kb2.__notconfig or {}) do
+			for _,vfn in ipairs(genFindUsesConfig(kbTerm)) do
+				local func = function(filter)
+					if not filter[term] then
+						return vfn()
+					end
+				end
+				table.insert( rv, func )
+			end
+		end
+		return rv
+	end
+	local uc = genFindUsesConfig(kb)
+
+	kb.__usesconfig = uc
+	return uc		
 end
 
 -- return or create the nested keyedblock for the given term

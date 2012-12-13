@@ -139,8 +139,8 @@
 		description = " Only include projects in these project sets. Use \"default\" for projects where projectset is undefined, \"export\" for exported projects.",
 	}
 	newoption {
-		trigger 	= "defaultbuildfile",
-		value		= "premakeFile.lua",
+		trigger 	= "defaultbuilddir",
+		value		= "dir with premake file",
 		description = "Unless otherwise specified, only build projects listed in this premake file (& dependencies)",
 		hide		= true,
 	}
@@ -150,6 +150,18 @@
 		description	= "Destination root path to copy the release",
 	}
 	newoption {
-		trigger     = "releaseCopy",
-		description = "Release a copy of the files, not a symlink",
+		trigger     = "releaseSymlinks",
+		description = "Release a symlink to the files, not a copy",
+	}
+	newoption {
+		-- passed through to ninja
+		trigger     = "buildVerbose",
+		description = "Build with verbose comments",
+		aliases     = { "v" },
+	}	
+	newoption {
+		-- passed through to ninja
+		trigger     = "smartTerminal",
+		value       = "[=on|off]",
+		description = "Ninja : Build with smart terminal on",
 	}

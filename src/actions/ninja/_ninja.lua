@@ -150,7 +150,7 @@
 			local h = ninja.buildFileHandle[filename]
 			
 			if _OPTIONS['debug'] and type(h) == 'userdata' then
-				local fileLen = h:seek('end', 0)
+				local fileLen = io.getsize(h)
 				local cwd = os.getcwd()
 				
 				if fileLen then
@@ -197,6 +197,15 @@
 			else
 				cmd = "export IS_RUNNING_PREMAKE=TRUE && "..cmd
 			end
+			
+			-- ninja flags
+			if _OPTIONS['buildVerbose'] then
+				cmd = cmd .. ' -v'
+			end
+			if _OPTIONS['smartTerminal'] then
+				cmd = cmd .. ' --smartTerminal='.._OPTIONS['smartTerminal']
+			end
+			
 			local rv = os.executef(cmd)
 			os.chdir(dir)
 			
@@ -237,18 +246,15 @@
 	
 				if not foundIgnore then
 					-- Not found
-					print('Did not find *.ninja in the '..sc.ignore..' file ('..dir..'). Do you want to add it? [Recommended] (Y/n)')
-					local key = io.input():read(1)
-					if key:lower() == 'y' then
-						local f
-						if os.isfile(ignoreFile) then
-							f = io.open(ignoreFile, "a")
-						else
-							f = io.open(ignoreFile, "w")
-						end
-						f:write('*.ninja\n')
-						io.close(f)				
+					print('Adding *.ninja to the '..sc.ignore..' file ('..dir..').')
+					local f
+					if os.isfile(ignoreFile) then
+						f = io.open(ignoreFile, "a")
+					else
+						f = io.open(ignoreFile, "w")
 					end
+					f:write('*.ninja\n')
+					io.close(f)				
 				end
 			end
 		end

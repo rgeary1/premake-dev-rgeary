@@ -55,6 +55,7 @@ static const luaL_Reg os_functions[] = {
 	{ "matchstart",  os_matchstart  },
 	{ "mkdir",       os_mkdir       },
 	{ "pathsearch",  os_pathsearch  },
+	{ "readlink",    os_readlink    },
 	{ "rmdir",       os_rmdir       },
 	{ "stat",        os_stat        },
 	{ "uuid",        os_uuid        },

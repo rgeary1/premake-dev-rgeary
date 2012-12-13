@@ -453,7 +453,7 @@ timer.stop(tmr)
 	function path.asRoot(p)
 		if not p then return '' end
 		if p == repoRootPlain then
-			return "$root"
+			return "$root/"
 		end
 		return p:replace(repoRoot, "$root/")
 	end

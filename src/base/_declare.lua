@@ -39,3 +39,9 @@
 	
 -- Global defualt settings, override this in the system script if necessary
 	premake.clearActiveProjectOnNewFile = true
+	
+--
+-- For printing in quiet mode
+--
+	_G.printAlways = _G.print
+	

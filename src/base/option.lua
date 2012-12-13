@@ -58,7 +58,12 @@
 --
 
 	function premake.option.get(name)
-		return premake.option.list[name] or premake.option.aliases[name]
+		local opt = premake.option.list[name] or premake.option.aliases[name]
+		if not opt then 
+			name = name:lower()
+			opt = premake.option.list[name] or premake.option.aliases[name]
+		end
+		return opt
 	end
 
 
@@ -97,14 +102,16 @@
 		for key, value in pairs(_OPTIONS) do
 			-- does this option exist
 			local opt = premake.option.get(key)
-			if (not opt) then
-				return false, "invalid option '" .. key .. "'"
+			if key ~= '' then
+				if (not opt) then
+					return false, "invalid option '" .. key .. "'"
+				end
+				-- also register lower case trigger
+				newOptions[key] = _OPTIONS[key]
+				newOptions[key:lower()] = newOptions[key]
+				-- reregister .trigger in the table in case the option is an alias
+				newOptions[opt.trigger] = _OPTIONS[opt.trigger] or _OPTIONS[key]
 			end
-			-- also register lower case trigger
-			newOptions[key] = _OPTIONS[key]
-			newOptions[key:lower()] = newOptions[key]
-			-- reregister .trigger in the table in case the option is an alias
-			newOptions[opt.trigger] = _OPTIONS[opt.trigger] or _OPTIONS[key]
 		end
 		_OPTIONS = newOptions
 		

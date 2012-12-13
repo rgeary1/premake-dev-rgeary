@@ -43,6 +43,9 @@
 		-- strip out leading comments
 		s = s:gsub("^%-%-\n", "")
 
+		-- add filename as first line comment, for error messages
+		s = '-- '..fname..' \n'..s
+
 		-- escape line feeds
 		s = s:gsub("\n", "\\n")
 		

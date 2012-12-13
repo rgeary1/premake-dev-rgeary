@@ -79,6 +79,7 @@ function ninja.generateSolution(sln, scope)
 		if slnCfg ~= prjTargets then
 			local buildCmd = 'phony '.. prjTargets
 			addBuildEdge(slnCfg, buildCmd)
+			_p('# Solution targets')
 			_p('build '..slnCfg..': '..buildCmd)
 		end
 		slnTargets[cfgName] = slnTargets[cfgName] or {}
@@ -93,6 +94,7 @@ function ninja.generateSolution(sln, scope)
 	if sln.exports then
 		for alias,fullProjName in pairs(sln.exports) do
 			if alias ~= fullProjName then
+				_p('# Solution exports')
 				_p('build '..alias..': phony '..fullProjName)
 			end
 		end
@@ -250,6 +252,10 @@ function ninja.writeProjectTargets(prj, scope)
 	local prjTargets = {}
 	local isCommandProject = prj.isCommandProject		-- a command project has only one configuration (& output) which is equivalent to all variants
 	local prjTargetName = prj.name
+	if prjTargetName == prj.solution.name then
+		prjTargetName = prj.name..'.Project'
+	end
+	
 	local defaultBuildVariant = project.getDefaultBuildVariant(prj)
 	if not defaultBuildVariant then
 		defaultBuildVariant = { buildcfg = 'All' }
@@ -476,10 +482,7 @@ function ninja.writeProjectTargets(prj, scope)
 		end
 		
 		-- Link
-		local finalTargetN = prj.name.. '.' ..cfgname
-		if prj.name == prj.solution.name then
-			finalTargetN = prj.name..'.Project.' .. cfgname 
-		end
+		local finalTargetN = prjTargetName.. '.' ..cfgname
 		
 		if #allLinkInputs > 0 then
 		
@@ -491,7 +494,8 @@ function ninja.writeProjectTargets(prj, scope)
 		
 			if not linkTool then
 				if #extraTargets == 0 then
-					if cfg.buildtarget then 
+					if cfg.buildtarget and cfg.buildtarget.name then 
+						_p('# Null linker')
 						local buildCmd = 'phony '..table.concat(allLinkInputs, ' ')
 						local linkTargetN = targetdirN..'/'..cfg.buildtarget.name
 						if isCommandProject then
@@ -605,6 +609,7 @@ function ninja.writeProjectTargets(prj, scope)
 		else
 			local buildCmd = 'phony '..table.concat(finalTargetInputs, ' ')
 			addBuildEdge(finalTargetN, buildCmd)
+			_p('# Final target')
 			_p('build '..finalTargetN..': '..buildCmd)
 			_p('')
 		end
@@ -621,11 +626,12 @@ timer.stop(tmr)
 	if (prj.configs or {})[defaultBuildName] then
 		local cfg = prj.configs[defaultBuildName]
 		if cfg.buildwhen ~= 'explicit' then
-			defaultTarget = prj.name..'.'..ninja.replaceSpecialChars(cfg.shortname)
-			prjTargets[''] = { prj.name }
+			defaultTarget = prjTargetName..'.'..ninja.replaceSpecialChars(cfg.shortname)
+			prjTargets[''] = { prjTargetName }
 		end
 	end
 	if not ninja.buildEdges[prjTargetName] then
+		_p('# Project build targets')
 		_p('build '..prjTargetName..': phony '..defaultTarget)
 		addBuildEdge(prjTargetName, defaultTarget)
 	end

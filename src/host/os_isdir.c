@@ -7,7 +7,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "premake.h"
-
+#if PLATFORM_LINUX || PLATFORM_BSD || PLATFORM_SOLARIS
+#  include <unistd.h>
+#endif
 
 int os_isdir(lua_State* L)
 {
@@ -31,4 +33,27 @@ int os_isdir(lua_State* L)
 	return 1;
 }
 
+/* Return the real path of a symbolic link */
+int os_readlink(lua_State* L)
+{
+#if PLATFORM_LINUX || PLATFORM_BSD || PLATFORM_SOLARIS
+	#if !defined(PATH_MAX)
+	#define PATH_MAX  (4096)
+	#endif
 
+	char realpath[PATH_MAX];
+	const char* path = luaL_checkstring(L, 1);
+
+	int len = readlink(path, realpath, PATH_MAX-1);
+	if (len > 0)
+	{
+		realpath[len] = '\0';
+		lua_pushstring(L, realpath);
+		return 1;
+	}
+
+	return 0;
+#else
+	return 0;
+#endif
+}

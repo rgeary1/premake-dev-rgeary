@@ -3,8 +3,6 @@
 -- 
 
 -- For Backwards compatibility
-local premakeVersion = tonumber(string.match(_PREMAKE_VERSION, "[%d.]+")) or 99
-if premakeVersion <= 4.3 then
 	local function checkFn(name) 
 		if not rawget(_G, name) then 
 			_G[name] = function() end
@@ -14,7 +12,6 @@ if premakeVersion <= 4.3 then
 	checkFn("uses")
 	checkFn("buildrule")
 	checkFn("toolset")
-end
 
 -- Enable JIT with --jit option
 newoption {

@@ -51,6 +51,10 @@
 	function config.addUsageConfig(realProj, usageProj, buildVariant)
 		local realCfg = project.getconfig2(realProj, buildVariant)
 		
+		if not usageProj then
+			error("No usage project for "..realProj.name)
+		end
+		
 		if not usageProj.hasBakedUsage then
 			globalContainer.bakeUsageProject(usageProj)
 		end
@@ -64,6 +68,7 @@
 			if realCfg.kind == 'SharedLib' then
 				-- link to the target as a shared library
 				oven.mergefield(usageKB, "linkAsShared", { realTargetPath })
+				oven.mergefield(usageKB, "rpath", { realTargetPath }) -- TODO
 			elseif realCfg.kind == 'StaticLib' then
 				-- link to the target as a static library
 				oven.mergefield(usageKB, "linkAsStatic", { realTargetPath })
@@ -155,8 +160,12 @@
 		if cfg.project and cfg.kind and cfg.kind ~= 'None' then
 			cfg.buildtarget = config.gettargetinfo(cfg)
 			oven.expandtokens(cfg, nil, nil, "buildtarget", true)
+			-- remove redundant slashes, eg. a//b
+			cfg.buildtarget.abspath = cfg.buildtarget.abspath:replace("//","/")
+			
 			cfg.linktarget = config.getlinkinfo(cfg)
 			oven.expandtokens(cfg, nil, nil, "linktarget", true)
+			cfg.linktarget.abspath = cfg.linktarget.abspath:replace("//","/") 
 		end
 		
 		oven.expandtokens(cfg, "config")

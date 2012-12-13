@@ -68,12 +68,16 @@
 				local onsolution = a.onSolution or a.onsolution
 				local onproject = a.onProject or a.onproject
 				
-				for _,sln in pairs(targets.slnToBuild) do
-					if onsolution then onsolution(sln) end
+				if onsolution then	
+					for _,sln in pairs(targets.slnToBuild) do
+						onsolution(sln) 
+					end
 				end
 				
-				for _,prj in pairs(targets.prjToBuild) do
-					if onproject then onproject(prj) end
+				if onproject then
+					for _,prj in pairs(targets.prjToBuild) do
+						onproject(prj) 
+					end
 				end
 				
 				if a.onEnd then

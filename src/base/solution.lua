@@ -35,9 +35,16 @@
 			ptypeSet( sln, "solution" )
 			prefix = name .. '/' 
 		end
+		
+		local shortname = name
+		if name:contains("/") then
+			shortname = name:match(".*/([^/]+)")
+		end
 			
 		sln.name           = name
-		sln.basedir        = os.getcwd()			
+		sln.shortname      = shortname
+		sln.basedir        = os.getcwd()
+		sln.dirFromRoot    = path.asRoot(sln.basedir):replace("$root/","")			
 		sln.projects       = { }		-- real projects, not usages
 		sln.namespaces     = { name..'/' }
 		sln.script		   = _SCRIPT

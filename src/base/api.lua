@@ -218,6 +218,7 @@
 		}
 		table.insert( api.scopeStack, s )
 	end
+	api.scopePush = api.scopepush
 
 --
 -- Pop a scope from the stack
@@ -230,6 +231,7 @@
 		premake.CurrentContainer = api.scope.currentContainer
 		premake.CurrentConfiguration = api.scope.currentConfiguration
 	end
+	api.scopePop = api.scopepop
 
 --
 -- Callback for all API functions; everything comes here first, and then
@@ -337,16 +339,16 @@
 		local remover = api["remove" .. kind] or table.insert
 
 		-- iterate the list of values and add them all to the list
-		local function addvalue(value)
+		local function addvalue(value, hasSplit)
 			-- recurse into tables
 			if type(value) == "table" then
 				for _, v in ipairs(value) do
 					addvalue(v)
 				end
 
-			elseif field.splitOnSpace and type(value) == 'string' and value:contains(' ') then
+			elseif not hasSplit and field.splitOnSpace and type(value) == 'string' and value:contains(' ') then
 				local v = value:split(' ')
-				addvalue(v)
+				addvalue(v, true)
 			
 			-- insert simple values
 			else
@@ -488,15 +490,18 @@
 			local filename = path.getabsolute(value)
 			local dir = path.getdirectory(value)
 			if not os.isfile(filename) and not filename:match("%.pb%..*") then
+				local prjName = (api.scope.project or {}).name or ""
 				if not os.isdir(dir) then
-					print("Warning : \""..dir.."\" is not a directory, can't find "..filename)
+					print("Warning ("..prjName..") : \""..dir.."\" is not a directory, can't find "..filename)
 				else
-					print("Warning : \""..filename.."\" is not a file")
+					print("Warning ("..prjName..") : \""..filename.."\" is not a file")
 				
 					local allFiles = os.matchfiles(dir..'/*')
-					local spell = premake.spelling.new(allFiles)
-					local suggestions,str = spell:getSuggestions(value)
-					print(str)
+					local spell,count = premake.spelling.new(allFiles)
+					if count < 5 then
+						local suggestions,str = spell:getSuggestions(value)
+						print(str)
+					end
 				end
 			end
 			target[name] = filename
@@ -583,23 +588,23 @@
 		local setter = api["set" .. kind]
 		
 		-- function to add values
-		local function addvalue(value, depth)
+		local function addvalue(value, depth, hasSplit)
 			-- recurse into tables
 			if type(value) == "table" then
 				for _, v in ipairs(value) do
-					addvalue(v, depth + 1)
+					addvalue(v, depth + 1, hasSplit)
 				end
 			
 			-- insert simple values
-			elseif field.splitOnSpace and type(value) == 'string' and value:contains(' ') then
+			elseif not hasSplit and field.splitOnSpace and type(value) == 'string' and value:contains(' ') then
 				local v = value:split(' ')
-				addvalue(v, depth + 1)
+				addvalue(v, depth + 1, true)
 			else
 				if target[value] then
 					return
 				end
 				target[value] = value
-				setter(target, #target + 1, field, value)
+				setter(target, #target + 1, field, value, hasSplit)
 			end
 		end
 		
@@ -1125,7 +1130,8 @@
 		kind = "string",
 		isList = true,
 		expandtokens = true,
-		namealiases = { "linkflags" }
+		namealiases = { "linkflags" },
+		usagePropagation = "WhenSharedOrStaticLib",
 	}
 	
 	-- if the value is a static lib project, link it as a static lib & propagate if the current project is StaticLib
@@ -1282,6 +1288,7 @@
 	api.scope.currentNamespace = ''
 	function api.namespace(n)
 		if not n then return api.scope.currentNamespace end
+		if type(n) == 'table' and #n == 1 then n = n[1] end
 		if type(n) ~= 'string' then error("Namespace must be a string") end
 		if not n:endswith("/") then
 			n = n..'/'
@@ -1304,13 +1311,13 @@
 	-- Sets the directory to put the release files/symlinks in
 	-- Relative paths are relative to --releaseDir, which defaults to repoRoot/release
 	--  Example : releasedir { bin = '.', scripts = './scripts', installbin='/usr/bin/ }
+	--  Use %{releaseName} for the name of the release 
 	--
 	api.register {
 		name = "releasedir",
 		scope = "global",
 		kind = "string",			-- string not path, to keep the paths as relative
 		isKeyedTable = true,
-		expandtokens = true,
 	}
 
 	api.register {
@@ -1679,6 +1686,10 @@
 				cfg.terms[i] = word
 			end
 			
+			if word:contains("!=") then
+				word = 'not ' .. word:replace("!=","=")
+			end
+			
 			table.insert(cfg.keywords, path.wildcards(word):lower())
 		end
 		
@@ -1708,7 +1719,7 @@
 		elseif name == '_GLOBAL_CONTAINER' then
 			return api.solution(name)
 		end
-		
+
 		-- identify the parent solution
 		local sln
 		if (ptype(premake.CurrentContainer) == "project") then
@@ -1794,7 +1805,7 @@
 			sln = premake.solution.get(name)
 		end
 		
-		namespace('/')
+		api.namespace('/')
 		if (not sln) then
 			sln = premake.solution.new(name)
 		end
@@ -1810,7 +1821,9 @@
 		
 		-- set the new namespace
 		if name ~= '_GLOBAL_CONTAINER' then	
-			namespace(name..'/')
+			api.namespace(name..'/')
+		else
+			api.namespace('/')
 		end
 		
 		return sln
@@ -1931,7 +1944,7 @@
 		local protoCPPFiles = Seq:new(protoFiles.files):select(function(v) return v:gsub('%.proto$','%.pb%.cc') end):toTable()
 		
 		if #protoCPPFiles == 0 then
-			error("Could not find any *.proto files in "..os.getcwd().."/"..mkstring(inputFilePattern))
+			--print("Warning : Could not find any *.proto files in "..os.getcwd().."/"..mkstring(inputFilePattern))
 		end
 		
 		-- Create a protobuf project to convert the .proto files in to .pb.cc
@@ -1990,8 +2003,8 @@
 			api.projectset("export", fullProjectName)
 		
 			-- solution's usage requirements include exported projects
-			usage(sln.name..'/'..sln.name)
-			uses(aliasName)
+			usage(sln.name..'/'..'exports')
+				uses(aliasName)
 		api.scopepop()
 	end
 
@@ -2082,12 +2095,12 @@ function api.release(t, t2)
 	rel.path = os.getcwd()
 	
 	rel.destinations = rel.destinations or {}
-	for destName,v in pairs(t) do
-		if type(destName) == 'number' then
-			destName = 'bin'
+	for destLabel,v in pairs(t) do
+		if type(destLabel) == 'number' then
+			destLabel = 'bin'
 		end
-		if destName ~= 'name' then
-			local src = { destName = destName, sources = {} }
+		if destLabel ~= 'name' then
+			local src = { destLabel = destLabel, sources = {} }
 			
 			if type(v) == 'string' then src.sources = v:split(' ') 
 			elseif type(v) == 'table' then
@@ -2115,13 +2128,17 @@ end
 --*************************************************************************************
 
 function api.buildvariant(variantName)
-	if not variantName or variantName == '' then
-		-- exit the variant configuration block
-		configuration {} 
-		return
+	if type(variantName) == 'table' and #variantName == 1 then
+		variantName = variantName[1]
 	end
 	if type(variantName) ~= 'string' then
 		error("Expected buildvariant <variantName>")
+	end
+	
+	if not variantName or variantName == '' then
+		-- exit the variant configuration block
+		configuration {}
+		return
 	end
 	
 	local variantNameL = variantName:lower()

@@ -59,8 +59,12 @@
 	    		return false
 	    	end
 		 	_HandlingError = 1
+		 	
+		 	-- make premake source filenames relative to the src base
+		 	stack = stack:gsub("(%.%.%.)[^\n:]*premake/src/","%1 src/")
 
 		    local errStr = tostring(errobj) or "("..type(errobj)..")"
+		    errStr = errStr:sub(1,1500)
 		    if( type(errobj)=='table' ) then
 		    	local errMsg = {}
 				for k,v in pairs(errobj) do
@@ -70,16 +74,16 @@
 		      	table.concat(errMsg, ',') 
 		      	.. "}"):sub(1,1500)
 		    end
-			print("Error: \"" .. errStr .. "\"")
-			print(stack)
+			printAlways("Error: \"" .. errStr .. "\"")
+			printAlways(stack)
 	    	--for k ,v in pairs(_G) do print("GLOBAL:" , k,v) end
-	    	print('')
+	    	printAlways('')
 	    	_HandlingError = 0
 	    end
     	return false
 	end
 	
-	local debuggerIsAttached = false
+	debuggerIsAttached = false
 	function attachDebugger()
 	
 		if debuggerIsAttached then 
@@ -129,6 +133,7 @@
 				dofile(scriptpath .. "/" .. v)
 			end
 		end
+		premake.isLoaded = true
 
 		path.setRepoRoot(_OPTIONS['reporoot'] or _WORKING_DIR)
 
@@ -178,7 +183,7 @@
 		if _OPTIONS['define'] then
 			local defines = _OPTIONS['define']:split(' ')
 			for _,v in ipairs(defines) do
-				configuration(v)
+				buildvariant(v)
 					define(v)
 			end
 			configuration {}
@@ -279,7 +284,11 @@
 		-- Validate the command-line arguments. This has to happen after the
 		-- script has run to allow for project-specific options
 		local ok, err = premake.option.validate()
-		if (not ok) then error("Error: " .. err, 0) end
+		if (not ok) then
+			print("_OPTIONS : "..mkstring(_OPTIONS or {}, ' ')) 
+			print("_ARGS : "..mkstring(_ARGS or {}, ' ')) 
+			error("Error: " .. err, 0) 
+		end
 		
 
 		-- Run interactive mode

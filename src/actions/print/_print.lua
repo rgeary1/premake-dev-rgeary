@@ -34,18 +34,13 @@
 		isnextgen	= true,
 		
 		onStart = function()
-			local foundPrint
-			for _,arg in ipairs(_ARGS) do
-				if arg == 'print' then
-					foundPrint = 1
-				elseif foundPrint then 
-					if arg == 'uses' then
-						Print.level = 1
-					else
-						Print.filterProj = Print.filterProj or {}
-						table.insert( Print.filterProj, arg )
-					end
-				end
+			if _ARGS['uses'] then
+				Print.level = 1
+			end
+			Print.filterProj = targets.requested
+			table.sort(Print.filterProj, function (a,b) return a.name < b.name end )
+			if #Print.filterProj == 0 then
+				print("No projects specified")
 			end
 		end,
 		
@@ -115,17 +110,18 @@
 	local function p5(name,obj) return Print.print(5,name,obj) end 
 	
 	function Print.execute()
-		for _,name in ipairs(Print.filterProj or {}) do
-			local sln = solution.get(name)
-			if sln then
+		for _,prjOrSln in ipairs(Print.filterProj or {}) do
+			local sln, prj
+			if ptype(prjOrSln) ~= 'project' then
+				sln = prjOrSln
 				Print.onSolution(sln)
-			end
-			local prj = project.getRealProject(name) or project.getUsageProject(name)
-			if prj then
+			else
+				prj = prjOrSln
 				Print.onProject(prj)
 			end
 			if not prj and not sln then
-				local suggestions, suggestionStr = project.getProjectNameSuggestions(name, namespaces)
+				local name = prjOrSln.name
+				local suggestions, suggestionStr = project.getProjectNameSuggestions(name)
 				print("Could not find "..name)
 				if #suggestions == 1 then
 					name = suggestions[1]
@@ -133,7 +129,7 @@
 					local prj = project.getRealProject(name) or project.getUsageProject(name)
 					Print.onProject(prj)
 				else
-					error(suggestionStr)
+					error(suggestionStr or '')
 				end
 			end
 		end
@@ -146,7 +142,9 @@
 		p5('language', sln.language)
 		p5('basedir', sln.basedir)
 		p5('configurations', sln.configurations)
-		local prjNames = Seq:new(sln.project):getKeys():toTable()
+		local prjNames = Seq:new(sln.projects):whereK(function(k,v) return type(k) == 'string' end)
+			:getKeys():toTable()
+		table.sort(prjNames)
 		p1('Projects', prjNames)
 		indent(-2)
 	end
@@ -157,13 +155,16 @@
 			p0('Usage', prj.name)
 		else
 			uProj = project.getUsageProject(prj.name)
+			if not uProj then
+				error("Could not find usage project for "..prj.name)
+			end
 			p0('Usage Requirements', uProj.name)
 		end
 		
 		indent(2)
 			globalContainer.bakeUsageProject(uProj)
 			project.bake(uProj)
-			for _,realCfg in pairs(prj.configs) do
+			for _,realCfg in pairs(prj.configs or {}) do
 				local filter = keyedblocks.getfilter(uProj, realCfg.buildVariant)
 				local ucfg = config.bake(uProj, filter)
 				p1("config", ucfg.shortname)

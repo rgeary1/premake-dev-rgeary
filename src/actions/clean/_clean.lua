@@ -24,7 +24,7 @@
 		if pattern == '.' then
 			return false		-- avoid deleting everything
 		end
-		local fname = premake.project.getfilename(obj, pattern)
+		local fname = clean.getfilename(obj, pattern)
 		os.rmdir(fname)
 		if removeParentsIfEmpty then
 			os.rmdirParentsIfEmpty(fname)
@@ -45,10 +45,18 @@
 --
 
 	function clean.file(obj, pattern)
-		local fname = premake.project.getfilename(obj, pattern)
+		local fname = clean.getfilename(obj, pattern)
 		os.remove(fname)
 	end
 
+--
+-- Copied from deprecated premake.project.getfilename
+--
+	function clean.getfilename(prj, pattern)
+		local fname = pattern:gsub("%%%%", prj.name)
+		fname = path.join(prj.location, fname)
+		return path.getrelative(os.getcwd(), fname)
+	end
 
 --
 -- Register the "clean" action.

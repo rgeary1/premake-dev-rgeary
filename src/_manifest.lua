@@ -30,6 +30,7 @@
 		"base/help.lua",
 		"base/premake.lua",
 		"base/spelling.lua",
+		"base/path2.lua",
 		
 		-- Deprecated
 		--[["base/project.lua",
@@ -46,13 +47,16 @@
 
 		-- tool APIs
 		"tools/atool.lua",
-		"tools/dotnet.lua",
 		"tools/gcc.lua",
+		"tools/icc.lua",
+		"tools/protobuf.lua",
+
+		--[[ Deprecated
+		"tools/dotnet.lua",
 		"tools/msc.lua",
 		"tools/ow.lua",
 		"tools/snc.lua",
-		"tools/icc.lua",
-		"tools/protobuf.lua",
+		]]
 
 		-- Clean action
 		"actions/clean/_clean.lua",
@@ -107,4 +111,8 @@
 		-- Ninja build action
 		"actions/ninja/_ninja.lua",
 		"actions/ninja/ninja_solution.lua",
+
+		-- Miscellaneous small actions that don't need their own file
+		"actions/misc/miscellaneousActions.lua",
+		
 	}

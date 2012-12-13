@@ -6,6 +6,7 @@
 	local spelling = premake.spelling
 	
 	spelling.alphabet = { "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "-", "+", "_", "/", }
+	spelling.count = 0
 	
 	function spelling.new(dictionary)
 		local s = inheritFrom(spelling)
@@ -20,7 +21,9 @@
 			s.dictionaryMaxLen = math.max(s.dictionaryMaxLen, #v) 
 		end
 		
-		return s
+		spelling.count = spelling.count + 1
+		
+		return s, spelling.count
 	end
 	
 	function spelling:edits1(word)

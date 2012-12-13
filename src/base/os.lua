@@ -4,6 +4,42 @@
 -- Copyright (c) 2002-2011 Jason Perkins and the Premake project
 --
 
+-- Other os.X functions available, implemented in C :
+--
+-- os.stat(filename)	
+--		Returns { mtime = <Last modified time in ms>, size = <file size in bytes> }  
+--
+-- os.chdir(dir)
+--		Change the current working directory
+--
+-- os.chmod(filename, octal mode as string)
+--		Sets the file permissions, eg. os.chmod(filename, "777")
+--
+-- os.copyfile(src, dest)
+--		Copy a file using the default operating system C function
+--
+-- os.getcwd()
+--		Returns the current working directory
+--
+-- os.is64bit()
+--		Returns true if the platform is 64bit
+--
+-- os.isdir(dir)
+--		Returns true if dir is a directory
+--
+-- os.isfile(filename)
+--		Returns true if filename is a file
+--
+-- os.mkdir(dir)
+--		Creates a new directory (not recursive)
+--
+-- os.rmdir(dir)
+--		Removes directory dir (not recursive)
+--
+-- os.uuid()
+--		Creates a new GUID
+
+
 --
 -- Same as os.execute(), but accepts string formatting arguments.
 --
@@ -216,7 +252,7 @@
 -- The os.matchdirs() and os.matchfiles() functions
 --
 
-	local function domatch(result, mask, wantfiles)
+	function os.domatch(result, mask, wantfiles)
 		local tmr = timer.start("os.domatch")
 		-- need to remove extraneous path info from the mask to ensure a match
 		-- against the paths returned by the OS. Haven't come up with a good
@@ -227,15 +263,17 @@
 		
 		-- if mask has double // from concatenating a dir with a trailing slash, remove it
 		mask = mask:replace('//','/')
+		
+		-- recurse into subdirectories?
+		local recurse = mask:find("**", nil, true)
 
 		-- strip off any leading directory information to find out
 		-- where the search should take place
-		local basedir = mask:replace("**","*")
+		local basedir = mask
 		basedir = path.getdirectory(basedir)
-		if (basedir == ".") then basedir = "" end
-
-		-- recurse into subdirectories?
-		local recurse = mask:find("**", nil, true)
+		if basedir:endswith("/**") then basedir = basedir:sub(1,#basedir-3) end
+		basedir = basedir:replace("**","*")
+		if (basedir == "." or basedir == "*") then basedir = "" end
 
 		-- convert mask to a Lua pattern
 		mask = path.wildcards(mask)
@@ -290,7 +328,7 @@
 	function os.matchdirs(...)
 		local result = { }
 		for _, mask in ipairs(arg) do
-			domatch(result, mask, false)
+			os.domatch(result, mask, false)
 		end
 		return result
 	end
@@ -298,7 +336,7 @@
 	function os.matchfiles(...)
 		local result = { }
 		for _, mask in ipairs(arg) do
-			domatch(result, mask, true)
+			os.domatch(result, mask, true)
 		end
 		return result
 	end
@@ -446,3 +484,10 @@
 			return os.execute(cmd)
 		end
 	end
+	
+	function os.getfilesize(filename)
+		local s = os.stat(filename)
+		if not s then return nil end
+		return s.size
+	end
+	

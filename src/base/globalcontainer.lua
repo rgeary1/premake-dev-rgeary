@@ -10,6 +10,8 @@
 	local keyedblocks = premake.keyedblocks  
 	local targets = premake5.targets
 	local config = premake5.config
+	-- explicitly requested projects
+	targets.requested = {}		-- requested[#] = prj or sln
 	targets.prjToBuild = {}		-- prjToBuild[prjName] = prj
 	targets.slnToBuild = {}		-- slnToBuild[slnName] = sln
 	-- Keep track of all dependent projects
@@ -22,9 +24,6 @@
 -- Apply any command line target filters
 --
 	function globalContainer.filterTargets()
-		local prjToBuild = targets.prjToBuild
-		local slnToBuild = targets.slnToBuild
-		
 		-- Read --projectset= option
 		if _OPTIONS['projectset'] then
 			targets.includeProjectSets = {}
@@ -47,68 +46,120 @@
 				if action.filterProjectsFromCommandLine then
 					action.filterProjectsFromCommandLine(v)
 				else
-				
-					-- Check if any command line arguments are solutions
-					for _,sln in pairs(targets.solution) do
-						if sln.name == v or sln.name:contains(v..'/') or sln.name:endswith('/'..v) then
-							-- Add solution to the build
-							slnToBuild[sln.name] = sln
-						end
-					end
-					
-					-- Check if any command line arguments are projects
-					local prj = project.getRealProject(v)
-					if prj then
-						prjToBuild[prj.name] = prj
-					end
+					globalContainer.findBuildTarget(v)
 				end
 			end
 		end
 
 		-- If nothing is specified :
-		if table.isempty(slnToBuild) and table.isempty(prjToBuild) then
+		if table.isempty(targets.requested) then
 			
 			-- Build default premake file projects
-			if _OPTIONS['defaultbuildfile'] then
-				local defaultScript = path.getabsolute(_OPTIONS['defaultbuildfile'])
+			if _OPTIONS['defaultbuilddir'] then
+				local defaultDir = path.getabsolute(_OPTIONS['defaultbuilddir'])
+				local found = false
 				for _,sln in pairs(targets.solution) do
-					if sln.script == defaultScript and not slnToBuild[sln.name] then
+					if path.getdirectory(sln.script) == defaultDir and not targets.slnToBuild[sln.name] then
 						print("Build Solution : "..sln.name)
-						slnToBuild[sln.name] = sln
+						targets.slnToBuild[sln.name] = sln
+						table.insert( targets.requested, sln )
+						found = true
 					end 
 				end
 				for _,prj in pairs(targets.allReal) do
-					if prj.script == defaultScript and not prjToBuild[prj.name] then
+					if path.getdirectory(prj.script) == defaultDir and not targets.prjToBuild[prj.name] then
 						print("Build Project : "..prj.name)
-						prjToBuild[prj.name] = prj
+						targets.prjToBuild[prj.name] = prj
+						table.insert( targets.requested, prj )
+						found = true
 					end 
+				end
+				
+				if not found then 
+					print("Could not find the directory \""..defaultDir.."\" in the build tree. Did you include it?")
+					os.exit(1)
 				end
 			end
 		end
 					
 		-- ... or Build all solutions
-		if table.isempty(slnToBuild) and table.isempty(prjToBuild) then
+		if table.isempty(targets.requested) then
 			for _,sln in pairs(targets.solution) do
-				slnToBuild[sln.name] = sln
+				targets.slnToBuild[sln.name] = sln
 			end
 		end
 		
 		-- Add solution's projects to the build
-		for _,sln in pairs(slnToBuild) do
+		for _,sln in pairs(targets.slnToBuild) do
 			for _,prj in ipairs(sln.projects) do
 			
 				-- Filter to selected project sets
 				if not prj.isUsage and project.inProjectSet(prj, targets.includeProjectSets) then
-					prjToBuild[prj.name] = project.getRealProject(prj.name)
+					targets.prjToBuild[prj.name] = project.getRealProject(prj.name)
 				end
 			end
 		end
 		
-		if table.isempty(prjToBuild) then
+		if table.isempty(targets.prjToBuild) then
 			print("Warning : No projects in the selection!")
 		end		
 	end
 
+
+	function globalContainer.findBuildTarget(v)
+		local found = false
+	
+		-- Check if any command line arguments are solutions
+		for _,sln in pairs(targets.solution) do
+			if sln.name == v or sln.name:contains(v..'/') or sln.name:endswith('/'..v) then
+				-- Add solution to the build
+				targets.slnToBuild[sln.name] = sln
+				targets.requested[#targets.requested+1] = sln
+				found = true
+			end
+		end
+		
+		-- Check if any command line arguments are projects
+		local prj = project.getRealProject(v) or project.getUsageProject(v)
+		if prj then
+			if not prj.isUsage then
+				targets.prjToBuild[prj.name] = prj
+			end
+			targets.requested[#targets.requested+1] = prj
+			found = true
+		end
+
+		if not found then
+			-- search for v as a project name
+			for _,prj in Seq:new(targets.allReal):concat(targets.allUsages):each() do
+				if prj.shortname == v then
+					found = true
+					-- Add solution to the build
+					if not prj.isUsage then
+						targets.prjToBuild[prj.name] = prj
+					end
+					table.insert( targets.requested, prj )
+					print(" "..prj.name)
+				end
+			end
+		end
+		
+		if not found then
+			-- search for v as a project name fragment
+			print("Could not find project \""..v.."\", looking for matches...")
+			for _,prj in Seq:new(targets.allReal):concat(targets.allUsages):each() do
+				if prj.name:contains(v) then
+					-- Add solution to the build
+					if not prj.isUsage then
+						targets.prjToBuild[prj.name] = prj
+					end
+					table.insert( targets.requested, prj )
+					print(" "..prj.name)
+				end
+			end
+		end
+	end
+	
 --
 -- Bake all the projects
 --
@@ -191,7 +242,7 @@
 		end
 		keyedblocks.create(usageProj, parent)
 
-		local realProj = project.getRealProject(usageProj.name, usageProj.namespace)
+		local realProj = project.getRealProject(usageProj.name, usageProj.namespaces)
 		if realProj then
 		
 			-- Bake the real project (RP) first, and apply RP's usages to RP

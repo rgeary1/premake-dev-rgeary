@@ -3,6 +3,7 @@
 -- Provides Open Watcom-specific configuration strings.
 -- Copyright (c) 2008 Jason Perkins and the Premake project
 --
+--[[ Deprecated
 
 	premake.ow = { }
 	premake.ow.namestyle = "windows"
@@ -129,3 +130,4 @@
 		return result
 	end
 
+]]
