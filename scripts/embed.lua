@@ -32,16 +32,16 @@
 		s = s:gsub("[^\"']%-%-%[==%[.-%]==%]", "")
 
 		-- strip out inline comments
-		s = s:gsub("\n%-%-[^\n]*", "")
+		s = s:gsub("\n%-%-[^\n]*", "\n")
 		
 		-- escape backslashes
 		s = s:gsub("\\", "\\\\")
 
 		-- strip duplicate line feeds
-		s = s:gsub("\n+", "\n")
+		--s = s:gsub("\n+", "\n")
 
 		-- strip out leading comments
-		s = s:gsub("^%-%-\n", "")
+		s = s:gsub("^%-%-[^\n]*\n", "")
 
 		-- add filename as first line comment, for error messages
 		s = '-- '..fname..' \n'..s

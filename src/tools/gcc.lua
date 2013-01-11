@@ -20,10 +20,13 @@ local gcc_cc = newtool {
 	
 	flagMap = {
 		AddPhonyHeaderDependency = "-MP",	 -- used by makefiles
+		AllowUndefinedSymbols = {
+			Yes = "-Wl,--undefined-symbols",
+			No = "-Wl,--no-undefined-symbols",
+		},
 		CreateDependencyFile = "-MMD",
 		CreateDependencyFileIncludeSystem = "-MD",
 		InlineDisabled = "-fno-inline",
-		InlineExplicitOnly = "-inline-level=1",
 		InlineAnything = "-finline-functions",
 		EnableSSE2     = "-msse2",
 		EnableSSE3     = "-msse3",
@@ -31,7 +34,7 @@ local gcc_cc = newtool {
 		EnableSSE42    = "-msse4.2",
 		EnableAVX      = "-mavx",
 		Warnings = {
-			Off				= "-w0",
+			Off				= "-w",
 			Extra			= "-Wall",
 		},
 		FatalWarnings  = "-Werror",
@@ -52,17 +55,18 @@ local gcc_cc = newtool {
 		defines 		= '-D',
 		includedirs 	= '-I',
 		output			= '-o',
-		depfileOutput   = '-MF',
 	},
-	suffixes = {
-		depfileOutput   = '.d',
+	decorateFn = {
+		depfileOutput   = atool.generateDepfileOutput,
 	},
 
 	-- System specific flags
 	getsysflags = function(self, cfg)
 		local cmdflags = {}
 		if cfg.system ~= premake.WINDOWS and cfg.kind == premake.SHAREDLIB then
-			table.insert(cmdflags, '-fPIC')
+			if not (cfg.flags or {}).fPIC then
+				table.insert(cmdflags, '-fPIC')
+			end
 		end
 		
 		if cfg.architecture == 'x32' then
@@ -103,21 +107,19 @@ local gcc_asm = newtool {
 	fixedFlags = '-c -x assembler-with-cpp',
 	extensionsForCompiling = { '.s' },
 	
-	-- Bug in icc, only writes Makefile style depfiles. Just disable it.
-	prefixes = table.exceptKeys(gcc_cxx.prefixes, { 'depfileOutput' }),
-	suffixes = table.exceptKeys(gcc_cxx.suffixes, { 'depfileOutput' }),
+	prefixes = gcc_cxx.prefixes,
+	suffixes = gcc_cxx.suffixes,
+	-- Bug, only writes Makefile style depfiles. Just disable it.
+	decorateFn = table.exceptKeys(gcc_cxx.decorateFn, { 'depfileOutput' }),
 	flagMap = table.exceptKeys(gcc_cxx.flagMap, { 'CreateDependencyFile', 'CreateDependencyFileIncludeSystem', }),
 }
 local gcc_ar = newtool {
 	toolName = 'ar',
 	binaryName = 'ar',
 	fixedFlags = 'rsc',
-	extensionsForLinking = { '.o', '.a', },		-- possible inputs in to the linker
+	extensionsForLinking = { '.o', '.a', '.so' },		-- possible inputs in to the linker
 	redirectStderr = true,
 	targetNamePrefix = 'lib',
-	flagMap = {
-		WholeArchive = "-Wl,--whole-archive",
-	},
 }
 local gcc_link = newtool {
 	toolName = 'link',
@@ -127,23 +129,25 @@ local gcc_link = newtool {
 	flagMap = {
 		Stdlib = {
 			Shared		= '-shared-libgcc',
-			Static		= '-static-libgcc -static-libstdc++',		-- Might not work, test final binary with ldd. See http://www.trilithium.com/johan/2005/06/static-libstdc/
+			Static		= '-static-libgcc',		-- Might not work, test final binary with ldd. See http://www.trilithium.com/johan/2005/06/static-libstdc/
 		},
+		WholeArchive = "-Wl,--whole-archive",
 	},
 	prefixes = {
 		libdirs 		= '-L',
 		output 			= '-o',
-		rpath			= '-Wl,-rpath=',
 		linkoptions		= '',
 	},
 	suffixes = {
 		input 			= ' -Wl,--end-group',
 	},
 	decorateFn = {
-		linkAsStatic	= function(list) return atool.decorateLibList(list, '-Wl,-Bstatic', '-l'); end,
-		linkAsShared	= function(list) return atool.decorateLibList(list, '-Wl,-Bdynamic', '-l'); end,
+		linkAsStatic	= atool.decorateStaticLibList,
+		linkAsShared	= atool.decorateSharedLibList,
+		rpath			= atool.decorateRPath,
 	},
 	endFlags = '-Wl,-Bdynamic',	-- always put this at the end
+	separateSharedLibraryPaths = true,
 	
 	getsysflags = function(self, cfg)
 		if cfg == nil then

@@ -212,6 +212,58 @@
 timer.stop(tmr)		
 	end
 
+	local contextMT = {__index = function(self,key) 
+		return rawget(_G, key)
+	end }
+		
+	-- function to do the work of replacing a single token
+	local function expander(token, context)
+		if context.cache[token] then
+			return context.cache[token]
+		end
+		
+		-- convert the token into a function to execute
+		local func, err = loadstring("return " .. token)
+		if not func then
+			return nil, err
+		end
+		
+		-- give the function access to the project objects
+		setfenv(func, context)
+		setmetatable(context, contextMT)
+
+		-- run it and return the result
+		local err, result = pcall(func)
+		if not err or not result then
+			-- If it's an unset premake field, expand to blank
+			local fieldName = token:match("[^.]*.([^.]*)")
+			if fieldName and premake.fields[fieldName] then
+				return ''
+			end
+			
+			-- Error. Probably a spelling mistake
+			return nil, "Invalid token '" .. token .. "'"
+		end
+		if type(result) == 'table' then
+			result = table.concat(result, ' ')
+		end
+		context.cache[token] = result
+
+		return result
+	end
+
+	local expandTokenContext
+	local function expandToken(token)
+		local result, err = expander(token, expandTokenContext)
+		if not result then
+			local location = ((context.sln or {}).name or '') ..'/'
+				..((context.prj or {}).name or '')..'/'
+				..((context.cfg or {}).shortname or '')
+			print("Token expansion error : "..err .. ' in ' .. value..' at '..location, 0)
+			os.exit(1)
+		end
+		return result
+	end
 
 	function oven.expandvalue(value, context)
 		-- early out makes the function 40% faster
@@ -219,62 +271,17 @@ timer.stop(tmr)
 			return value
 		end
 	
-local tmr=timer.start('oven.expandvalue')
-		-- function to do the work of replacing a single token
-		local expander = function(token)
-			if context.cache[token] then
-				return context.cache[token]
-			end
-			
-			-- convert the token into a function to execute
-			local func, err = loadstring("return " .. token)
-			if not func then
-				return nil, err
-			end
-			
-			-- give the function access to the project objects
-			setfenv(func, context)
-			setmetatable(context, {__index = function(self,key) 
-				return rawget(_G, key) 
-			end 
-			})
-
-			-- run it and return the result
-			local err, result = pcall(func)
-			if not err or not result then
-				-- If it's an unset premake field, expand to blank
-				local fieldName = token:match("[^.]*.([^.]*)")
-				if fieldName and premake.fields[fieldName] then
-					return ''
-				end
-				
-				-- Error. Probably a spelling mistake
-				return nil, "Invalid token '" .. token .. "'"
-			end
-			if type(result) == 'table' then
-				result = table.concat(result, ' ')
-			end
-			context.cache[token] = result
-
-			return result
-		end
+		local tmr=timer.start('oven.expandvalue')
 		
 		-- keep expanding tokens until they are all handled
+		-- if expandTokenContext then error("Can't call oven.expandvalue recursively") end
+		expandTokenContext = context
 		repeat
-			value, count = string.gsub(value, "%%{(.-)}", function(token)			
-				local result, err = expander(token)
-				if not result then
-					local location = ((context.sln or {}).name or '') ..'/'
-						..((context.prj or {}).name or '')..'/'
-						..((context.cfg or {}).shortname or '')
-					print("Token expansion error : "..err .. ' in ' .. value..' at '..location, 0)
-					os.exit(1)
-				end
-				return result
-			end)
+			value, count = string.gsub(value, "%%{(.-)}", expandToken)
 		until count == 0
+		expandTokenContext = nil
 
-timer.stop(tmr)
+		timer.stop(tmr)
 		return value
 	end
 

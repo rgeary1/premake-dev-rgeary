@@ -121,7 +121,7 @@
 			local file = source.short_src:match(".*(src/.*)") or source.short_src
 			file=file:match('@?([^ ]*).*$')
 			local fileLine = file
-			if source.source:sub(1) == '@' then
+			if source.source:sub(1,1) == '@' then
 				fileLine = fileLine .. ':' .. line.currentline
 			end
 			error("Value not defined : "..tableName..'.'..key.." at "..fileLine, 2)

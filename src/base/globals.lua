@@ -62,11 +62,11 @@
 
 	local builtin_dofile = dofile
 	function dofile(fname, enableSpellCheck)
-		local oldcwd, oldfile		
+		local oldcwd, oldfile, dir
 		
 		local function setup()
 			-- remember the current working directory and file; I'll restore it shortly
-			oldcwd = os.getcwd()
+			oldcwd = _CWD
 			oldfile = _SCRIPT
 	
 			-- if the file doesn't exist, check the search path
@@ -79,34 +79,61 @@
 	
 			-- use the absolute path to the script file, to avoid any file name
 			-- ambiguity if an error should arise
-			_SCRIPT = path.getabsolute(fname)
+			fname = path.getabsolute(fname)
+			dir = path.getdirectory(fname)
+
+			for _,v in ipairs(io.excludedirs) do
+				if fname:startswith(v) then
+					return false
+				end
+			end
+			
+			_SCRIPT = fname
 			
 			-- switch the working directory to the new script location
-			local newcwd = path.getdirectory(_SCRIPT)
-			os.chdir(newcwd)
+			os.chdir(dir)
 			
 			if enableSpellCheck then
 				premake.spellCheckEnable(_G, "_G")
 			end
 			
 			if premake.isLoaded then
-				local sln = premake.api.scope.solution or {}
+
+				-- All files in subdirs of a premake solution will be included in that sln
+				local d = path.getdirectory(dir)
+				local sln
+				while not sln do
+					if io.slnScope[d] then 
+						sln = io.slnScope[d]
+						if premake.api.scope.solution ~= sln then
+							premake.api.solution(sln.name)
+						end 
+					else
+						d = path.getdirectory(d)
+						if not d:startswith(repoRootPlain) then break end
+					end
+				end
+				
 				local slnNamespace
-				if ptype(sln) == 'solution' then 
+				if ptype(sln or {}) == 'solution' then 
 					slnNamespace = sln.namespaces
 				else
 					slnNamespace = { '/' }
 				end
 				premake.api.namespace(slnNamespace)
 			end
+			
+			return true
 		end
-		setup()
+		if not setup() then
+		   return
+		end
 		
-		--printDebug("Include : ".._SCRIPT)
+		--if premake.isLoaded then printDebug("Include : ".._SCRIPT.." solution "..tostring(premake.api.scope.solution.name)) end
 		
 		-- run the chunk. How can I catch variable return values?
 		local a, b, c, d, e, f = builtin_dofile(_SCRIPT)
-		
+
 
 		if enableSpellCheck then
 			premake.spellCheckDisable(_G)
@@ -141,6 +168,7 @@
 --
 
 	io._includedFiles = { }
+	io.slnScope = {}
 	local helpMessageCount = 0
 		
 	function include(fileOrDir)
@@ -153,11 +181,11 @@
 					io._includedFiles[filename] = true
 					dofile(filename)
 				else
-					if os.getcwd() ~= repoRootPlain then
+					if _CWD ~= repoRootPlain then
 						if helpMessageCount < 3 then
 							print("Including a directory manually is now unnecessary : include \""..path.getname(filename).."\" in ".._SCRIPT)
 						elseif helpMessageCount == 3 then
-							print("...")
+							print(" etc...")
 						end
 						helpMessageCount = helpMessageCount + 1
 					end
@@ -170,8 +198,19 @@
 			
 			premake.api.scopePush()
 		
-			local rdir = os.readlink(fileOrDir) 
-			local dir = rdir or fileOrDir
+			local dir = fileOrDir
+			local realDir = os.getSymlinkTarget(fileOrDir)
+			
+			if realDir then
+				realDir = path.getabsolute(realDir)
+				if realDir:startswith(repoRoot) then
+					-- dir is a symlink, pointing to a directory within repoRoot
+					-- Ignore the symlink
+					dir = realDir
+				end
+				-- else pretend it's a real directory 
+			end
+			
 			local files = os.matchfiles(dir..'/premake*.lua')
 			includeFiles(files)
 			local subdirFiles = os.matchfiles(dir..'/**/premake*.lua')
@@ -179,7 +218,7 @@
 			
 			premake.api.scopePop()
 			
-               elseif os.isfile(fileOrDir) then
+		elseif os.isfile(fileOrDir) then
 			local filename = fileOrDir
 					
 			-- but only load each file once
@@ -187,6 +226,18 @@
 		else
 			error('Could not find include "'..fileOrDir ..'" in file "'.._SCRIPT..'"')
 		end
+	end
+	
+--
+-- Never include premake files in this directory
+--
+	io.excludedirs = {}
+	function excludedir(d)
+		if type(d) ~= 'string' then
+			error("excludedir expected string, found "..type(d),2)
+		end
+		d = path.getabsolute(d)
+		table.insert( io.excludedirs, d )
 	end
 
 --
@@ -559,4 +610,16 @@
 			end
 		end
 		return rv
-       end
+	end
+
+	local builtin_loadstring = loadstring
+	local loadstringCache = {} 
+	function loadstring(str)
+		if loadstringCache[str] then
+			return loadstringCache[str]
+		else
+			local l = builtin_loadstring(str)
+			loadstringCache[str] = l
+			return l
+		end
+	end

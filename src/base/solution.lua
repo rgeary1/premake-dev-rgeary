@@ -43,7 +43,7 @@
 			
 		sln.name           = name
 		sln.shortname      = shortname
-		sln.basedir        = os.getcwd()
+		sln.basedir        = _CWD
 		sln.dirFromRoot    = path.asRoot(sln.basedir):replace("$root/","")			
 		sln.projects       = { }		-- real projects, not usages
 		sln.namespaces     = { name..'/' }

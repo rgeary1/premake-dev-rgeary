@@ -211,7 +211,6 @@
 			solution 			 = api.scope.solution,
 			project 			 = api.scope.project,
 			configuration 		 = api.scope.configuration,
-			alsoPushToUsage		 = api.scope.alsoPushToUsage,
 			currentNamespace     = api.scope.currentNamespace,  			
 			currentContainer 	 = premake.CurrentContainer,
 			currentConfiguration = premake.CurrentConfiguration,
@@ -225,7 +224,7 @@
 --
 	function api.scopepop()
 		if #api.scopeStack < 1 then
-			error('No scope to pop')
+			error('No scope to pop', 2)
 		end
 		api.scope = table.remove( api.scopeStack )
 		premake.CurrentContainer = api.scope.currentContainer
@@ -244,7 +243,7 @@
 		if not value then return end
 		
 		if type(value) == 'table' and count(value)==0 then
-			error("Can't set \"" .. field.name .. '\" with value {} - did you forget to add quotes around the value? ')
+			error("Can't set \"" .. field.name .. '\" with value {} - did you forget to add quotes around the value? ', 2)
 		end
 		
 		local target = api.gettarget(field.scope)
@@ -267,10 +266,14 @@
 					end
 				end
 			else
+				local key = field.name
 				if premake.fieldAliases[value] then
 					value = premake.fieldAliases[value]
 				end
-				useValue = { [field.name] = value }
+				if value:contains("=") then
+					key = value:match("[^=]*"):lower()
+				end
+				useValue = { [key] = value }
 			end
 			
 			config.registerkey(field.name, useValue)
@@ -389,6 +392,9 @@
 				if not allowedValues then 
 					return nil, errMsg
 				end
+				if type(allowedValues) == 'string' then
+					return allowedValues
+				end
 				
 				allowedValues = toSet(allowedValues, true)
 				if allowedValues[valueL] then
@@ -488,7 +494,7 @@
 			target[name] = value
 		else
 			local filename = path.getabsolute(value)
-			local dir = path.getdirectory(value)
+			local dir = path.getdirectory(filename)
 			if not os.isfile(filename) and not filename:match("%.pb%..*") then
 				local prjName = (api.scope.project or {}).name or ""
 				if not os.isdir(dir) then
@@ -737,7 +743,6 @@
 	--  dependencies	(optional) additional files which the tool depends on, but does not take as an input
 	   
 	--   Use tokens to specify the input filename, eg. %{file.relpath}/%{file.name}
-	--	  also "$in" is equivalent to "%{cfg.files}", $out => %{cfg.targetdir.abspath}
 	api.register {
 		name = "buildrule",
 		scope = "config",
@@ -746,28 +751,31 @@
 		expandtokens = true,
 		setter = function(target, name, field, value)
 			-- aliases
-			value.commands = value.commands or value.command or value.cmd
-			if type(value.commands) == 'string' then
-				value.commands = { value.commands }
+			local br = value
+			
+			br.commands = br.commands or br.command or br.cmd
+			if type(br.commands) == 'string' then
+				br.commands = { br.commands }
 			end
-			value.outputs = value.outputs or value.output
-			local outputStr = Seq:new(value.outputs):select(function(p) 
+			br.outputs = br.outputs or br.output
+			br.dir = _CWD
+			local outputStr = Seq:new(br.outputs):select(function(p) 
 				if not p:startswith('%') then
-					return path.getabsolute(p)
+					return path.asRoot(path.getabsolute(p))
 				else
 					return p
 				end
 			end):mkstring()
-			value.absOutput = outputStr
-			for k,v in ipairs(value.dependencies or {}) do
-				value.dependencies[k] = path.getabsolute(v)
+			br.absOutput = outputStr
+			for k,v in ipairs(br.dependencies or {}) do
+				br.dependencies[k] = path.getabsolute(v)
 			end
-			for k,v in ipairs(value.commands) do
-				value.commands[k] = v:replace('$in','%{cfg.files}'):replace('$out',outputStr)
+			for k,v in ipairs(br.commands) do
+				br.commands[k] = v:replace('$out',outputStr)
 			end
 			
 			target[name] = target[name] or {}
-			table.insert( target[name], value )
+			table.insert( target[name], br )
 		end
 	}
 
@@ -926,6 +934,7 @@
 		end,
 		allowed = {
 			"AddPhonyHeaderDependency",		 -- for Makefiles, requires CreateDependencyFile
+			AllowUndefinedSymbols = { "", "Yes", "No", },  -- No = -Wl,--no-undefined-symbols
 			"CreateDependencyFile",
 			"CreateDependencyFileIncludeSystem",	-- include system headers in the .d file
 			"DebugEnvsDontMerge",
@@ -1058,6 +1067,17 @@
 		namealiases = { "includedir" },
 	}
 	
+	api.register {
+		name = "alwaysincludedir",
+		scope = "config",
+		kind = "directory",
+		isList = true,
+		expandtokens = true,
+		splitOnSpace = true,
+		namealiases = { "alwaysincludedirs" },
+		usagePropagation = "Always",
+	}	
+	
 	-- includes a solution in the current solution. Use "*" to include all solutions
 	api.register {
 		name = "includesolution",
@@ -1076,6 +1096,7 @@
 		allowed = {
 			"ConsoleApp",
 			"WindowedApp",
+			"ObjectFile",
 			"StaticLib",
 			"SharedLib",
 			
@@ -1134,6 +1155,14 @@
 		usagePropagation = "WhenSharedOrStaticLib",
 	}
 	
+	local function convertSlashToAbsPath(value)
+		if (not value:find("^[$%%]")) and value:find('/', nil, true) then
+			local absPath = path.asRoot(path.getabsolute(value))
+			value = absPath
+		end
+		return value
+	end
+		
 	-- if the value is a static lib project, link it as a static lib & propagate if the current project is StaticLib
 	-- if the value is a shared lib project, link it as a shared lib & propagate if the current project is StaticLib or SharedLib
 	-- if the value is neither, link it as a shared system lib & propagate if the current project is StaticLib or SharedLib
@@ -1142,18 +1171,10 @@
 		scope = "config",
 		kind = "string",
 		isList = true,
-		allowed = function(value)
-			-- if library name contains a '/' then treat it as a path to a local file
-			if value:find('/', nil, true) then
-				local absPath = path.getabsolute(value)
-				if os.isfile(absPath) then
-					value = absPath
-				end
-			end
-			return value
-		end,
+		-- if library name contains a '/' then treat it as a path to a local file
+		allowed = convertSlashToAbsPath,
 		expandtokens = true,
-		-- usage propagation is dealt with by converting it to linkAsShared / linkAsStatic once it's resolved
+		usagePropagation = "WhenSharedOrStaticLib",
 	}
 	
 	-- Link to the shared lib version of a system library
@@ -1163,6 +1184,7 @@
 		scope = "config",
 		kind = "string",
 		isList = true,
+		allowed = convertSlashToAbsPath,
 		expandtokens = true,
 		usagePropagation = "WhenSharedOrStaticLib",
 	}
@@ -1174,8 +1196,9 @@
 		scope = "config",
 		kind = "string",
 		isList = true,
+		allowed = convertSlashToAbsPath,
 		expandtokens = true,
-		usagePropagation = "WhenStaticLib"
+		usagePropagation = "WhenStaticLib",
 	}
 	
 	-- Wrap the linker tool with this command. The original compile command & flags will be
@@ -1289,7 +1312,7 @@
 	function api.namespace(n)
 		if not n then return api.scope.currentNamespace end
 		if type(n) == 'table' and #n == 1 then n = n[1] end
-		if type(n) ~= 'string' then error("Namespace must be a string") end
+		if type(n) ~= 'string' then error("Namespace must be a string", 2) end
 		if not n:endswith("/") then
 			n = n..'/'
 		end
@@ -1698,9 +1721,6 @@
 		-- this is the new place for storing scoped objects
 		api.scope.configuration = cfg
 		
-		-- used for build variants, default = off
-		api.scope.alsoPushToUsage = false
-		
 		return cfg
 	end
 
@@ -1766,7 +1786,6 @@
 
   		-- if this is a new project, create it
   		local prj = premake5.project.createproject(name, sln, false)
-  		prj.script = _SCRIPT
   		
   		-- Set the current container
   		premake.CurrentContainer = prj
@@ -1808,6 +1827,7 @@
 		api.namespace('/')
 		if (not sln) then
 			sln = premake.solution.new(name)
+			io.slnScope[_CWD] = sln
 		end
 
 		premake.CurrentContainer = sln
@@ -1908,13 +1928,13 @@
 			if parts["java"] then 		t.javaRoot = protoPath end
 			if parts["python"] then 	t.pythonRoot = protoPath end
 			if table.isempty(t) then
-				error("unknown protobuf argument in \""..mkstring(getKeys(parts), " ").."\"")
+				error("unknown protobuf argument in \""..mkstring(getKeys(parts), " ").."\"", 2)
 			end
 		end
 		t.protoPath = t.protoPath or protoPath
 
 		if not protoPath then
-			error("protoPath is nil")
+			error("protoPath is nil", 2)
 		end
 
 		local inputFilePattern = toList(t.files or '*.proto')
@@ -1923,9 +1943,9 @@
 		-- Create a new project, append /protobuf on to the active project name or directory name
 		local prj = api.scope.project
 		if not prj then
-			error("Must use protobuf statement within a project")
+			error("Must use protobuf statement within a project", 2)
 		end
-		local prjName = prj.name or path.getbasename(os.getcwd())
+		local prjName = prj.name or path.getbasename(_CWD)
 		prjName = prjName..'/protobuf'
 		
 		-- ** protoc's cpp/java/python_out is relative to the specified --proto_path **
@@ -1944,13 +1964,14 @@
 		local protoCPPFiles = Seq:new(protoFiles.files):select(function(v) return v:gsub('%.proto$','%.pb%.cc') end):toTable()
 		
 		if #protoCPPFiles == 0 then
-			--print("Warning : Could not find any *.proto files in "..os.getcwd().."/"..mkstring(inputFilePattern))
+			--print("Warning : Could not find any *.proto files in ".._CWD.."/"..mkstring(inputFilePattern))
 		end
 		
 		-- Create a protobuf project to convert the .proto files in to .pb.cc
 		api.scopepush()
 		project(prjName)
 			configurations("All")			-- Only output one configuration, the special "All" configuration
+			kind("Command")
 			language("protobuf")
 			toolset("protobuf")
 			files(inputFilePattern)
@@ -1969,23 +1990,44 @@
 		-- add C files to active outer project
 		files(protoCPPFiles)
 	end
+	
+	function api.alias(fullAliasName, fullProjectName)
+		if fullAliasName:startswith("/") then 
+			fullAliasName = fullAliasName:sub(2) 
+		elseif not fullAliasName:contains("/") then
+			if api.scope.solution then
+				fullAliasName = api.scope.solution.name .. '/' .. fullAliasName
+			end 
+		end
+		
+		if fullProjectName ~= fullAliasName then
+			targets.aliases[fullAliasName] = fullProjectName
+		end	
+	end
 
 	-- "export" explicitly lists which projects are included in a solution, and gives it an alias
 	function api.export(aliasName, fullProjectName)
-		fullProjectName = fullProjectName or aliasName 
-
 		local sln = api.scope.solution
 		if not sln then
-			error("Can't export, no active solution to export to")
+			error("Can't export, no active solution to export to", 2)
+		end
+		if not aliasName then
+			if not api.scope.project then
+				error("Can't use export() with no parameters, no active project", 2)
+			end
+			aliasName = api.scope.project.fullname
 		end
 		if type(aliasName) ~= 'string' then
-			error("export expected string parameter, found "..type(aliasName))
+			error("export expected string parameter, found "..type(aliasName), 2)
 		end
 		
-		if not aliasName:startswith(sln.name..'/') then
+		if not aliasName:contains('/') then
 			aliasName = sln.name .. '/' ..aliasName
 		end
-		if not fullProjectName:startswith(sln.name..'/') then
+		if fullProjectName == nil then
+			fullProjectName = aliasName
+		end
+		if not fullProjectName:contains('/') then
 			fullProjectName = sln.name .. '/' ..fullProjectName
 		end
 		
@@ -1993,9 +2035,6 @@
 		if fullProjectName ~= aliasName then
 			targets.aliases[aliasName] = fullProjectName
 		end
-		
-		sln.exports = sln.exports or {}
-		sln.exports[aliasName] = fullProjectName
 		
 		api.scopepush()
 		
@@ -2027,7 +2066,7 @@
 	function api.projectset(prjSetName, prjFullname)
 		if not prjFullname then
 			if not api.scope.project then
-				error("Unable to call projectset without an active or specified project")
+				error("Unable to call projectset without an active or specified project", 2)
 			end
 			prjFullname = api.scope.project.fullname
 		end
@@ -2066,13 +2105,13 @@
 function api.release(t, t2)
 	local sln = api.scope.solution
 	if not sln then
-		error("No active solution")
+		error("No active solution", 2)
 	end
 	
 	-- alias for quick one-line entry method
 	if t2 then
 		if type(t) ~= 'string' then
-			error("Unexpected syntax for release command, expected release(<table>) or release(<name>, <bin release files>)")
+			error("Unexpected syntax for release command, expected release(<table>) or release(<name>, <bin release files>)", 2)
 		end
 		t = { 
 			name = t,
@@ -2082,7 +2121,7 @@ function api.release(t, t2)
 	end
 	
 	if not t.name then
-		error("release nas no name field")
+		error("release nas no name field", 2)
 	end
 	local name = t.name
 	
@@ -2092,7 +2131,7 @@ function api.release(t, t2)
 	local rel = releases[name]
 	rel.name = name
 	rel.namespace = api.scope.currentNamespace
-	rel.path = os.getcwd()
+	rel.path = _CWD
 	
 	rel.destinations = rel.destinations or {}
 	for destLabel,v in pairs(t) do
@@ -2128,11 +2167,17 @@ end
 --*************************************************************************************
 
 function api.buildvariant(variantName)
-	if type(variantName) == 'table' and #variantName == 1 then
-		variantName = variantName[1]
+	if type(variantName) == 'table' then
+		if #variantName == 1 then
+			variantName = variantName[1]
+		elseif #variantName == 0 then
+			-- end the build variant
+			configuration {}
+			return
+		end
 	end
 	if type(variantName) ~= 'string' then
-		error("Expected buildvariant <variantName>")
+		error("Expected buildvariant <variantName>", 2)
 	end
 	
 	if not variantName or variantName == '' then
@@ -2143,7 +2188,7 @@ function api.buildvariant(variantName)
 	
 	local variantNameL = variantName:lower()
 	if premake.fields[variantNameL] or premake.fieldAliases[variantNameL] then
-		error("Invalid variant name : \""..variantName.."\", this is a premake keyword")
+		error("Invalid variant name : \""..variantName.."\", this is a premake keyword", 2)
 	end
 	
 	-- Register this configuration keyword as a propagated variant
@@ -2159,13 +2204,15 @@ function api.buildvariant(variantName)
 	if not active then
 		error("Can't apply variant "..variantName..", no active project or solution", 2)
 	end
+
+	-- everything in the variant block applies to both this project & its usage requirements
+	if ptype(active) ~= 'globalcontainer' then
+		uses(active.name)
+	end
 	usage(active.name)
 	
 	-- Start a new configuration block for this variant
 	configuration(variantName)
-	
-	-- everything in the variant block applies to both this project & its usage requirements
-	api.scope.alsoPushToUsage = true
 end
 
 function api.usevariant(variantName)

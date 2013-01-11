@@ -20,6 +20,7 @@
 	usevariant		= api.usevariant
 	release			= api.release
 	projectset		= api.projectset
+	alias			= api.alias
 
 --
 -- Define some commonly used symbols, for future-proofing.
@@ -38,6 +39,7 @@
 	premake.SOLARIS     = "solaris"
 	premake.SHAREDLIB   = "SharedLib"
 	premake.STATICLIB   = "StaticLib"
+	premake.OBJECTFILE  = "ObjectFile"
 	premake.UNIVERSAL   = "universal"
 	premake.WINDOWEDAPP = "WindowedApp"
 	premake.WINDOWS     = "windows"
@@ -55,13 +57,14 @@
 		{
 			sharedlib = { prefix = "lib", extension = ".so" },
 			staticlib = { prefix = "lib", extension = ".a" },
-			
+			objectfile = { extension = '.o' },
 		},
 		
 		macosx = 
 		{
 			sharedlib = { prefix = "lib", extension = ".dylib" },
 			staticlib = { prefix = "lib", extension = ".a" },
+			objectfile = { extension = '.o' },
 		},
 		
 		ps3 =
@@ -69,6 +72,7 @@
 			consoleapp = { extension = ".elf" },
 			sharedlib  = { prefix = "lib" },
 			staticlib  = { prefix = "lib", extension = ".a" },
+			objectfile = { extension = '.o' },
 		},
 		
 		windows = 
@@ -77,6 +81,7 @@
 			windowedapp = { extension = ".exe" },
 			sharedlib   = { extension = ".dll" },
 			staticlib   = { extension = ".lib" },
+			objectfile  = { extension = '.obj' },
 		}
 	}
 	

@@ -26,6 +26,19 @@ int os_chdir(lua_State* L)
 	}
 	else
 	{
+		/* set _CWD */
+		if (path[0] != '/') {
+			lua_getglobal(L, "_CWD");
+			lua_pushstring(L,"/");
+			lua_pushstring(L, path);
+			lua_concat(L,3);
+			lua_setglobal(L, "_CWD");
+		}
+		else {
+			lua_pushstring(L, path);
+			lua_setglobal(L, "_CWD");
+		}
+
 		lua_pushboolean(L, 1);
 		return 1;
 	}

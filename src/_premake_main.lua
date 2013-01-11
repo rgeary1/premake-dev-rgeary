@@ -10,7 +10,7 @@
 	local versionhelp   = "premake4 (Premake Build Script Generator) %s"
 	
 	_WORKING_DIR        = os.getcwd()
-
+	printAlways			= print
 
 --
 -- Inject a new target platform into each solution; called if the --platform
@@ -122,6 +122,8 @@
 
 		-- Attach Debugger
 		attachDebugger()
+		
+		_CWD = os.getcwd()
 
 		-- if running off the disk (in debug mode), load everything 
 		-- listed in _manifest.lua; the list divisions make sure

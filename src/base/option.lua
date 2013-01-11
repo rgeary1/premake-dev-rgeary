@@ -125,7 +125,8 @@
 			-- is the value allowed?
 			if (opt.allowed) then
 				for _, match in ipairs(opt.allowed) do
-					if (match[1] == value) then return true end
+					if type(match) == 'table' then match = match[1] end
+					if (match == value) then return true end
 				end
 				return false, "invalid value '" .. value .. "' for option '" .. key .. "'"
 			end

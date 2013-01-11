@@ -58,8 +58,10 @@
 		if not usageProj.hasBakedUsage then
 			globalContainer.bakeUsageProject(usageProj)
 		end
-
-		local usageKB = keyedblocks.createblock(usageProj.keyedblocks, buildVariant)
+		
+		local usageKB,found = keyedblocks.createblock(usageProj.keyedblocks, buildVariant)
+		
+		if found then return usageKB end
 
 		-- To use a library project, you need to link to its target
 		--  Copy the build target from the real proj
@@ -68,16 +70,21 @@
 			if realCfg.kind == 'SharedLib' then
 				-- link to the target as a shared library
 				oven.mergefield(usageKB, "linkAsShared", { realTargetPath })
-				oven.mergefield(usageKB, "rpath", { realTargetPath }) -- TODO
+				--oven.mergefield(usageKB, "rpath", { path.getdirectory(realTargetPath) })
 			elseif realCfg.kind == 'StaticLib' then
 				-- link to the target as a static library
 				oven.mergefield(usageKB, "linkAsStatic", { realTargetPath })
 			end
 		end
-		if not realCfg.kind then
+		if realCfg.kind == "Command" then
 			oven.mergefield(usageKB, "compiledepends", { realProj.name })
-		--elseif not realCfg.kind then
-			--error("Can't use target, missing cfg.kind")
+		elseif realCfg.kind == premake.OBJECTFILE then
+			local realTargetPath = realCfg.linktarget.abspath
+			oven.mergefield(usageKB, "linkAsStatic", { realTargetPath })
+		elseif not realCfg.kind then
+			print("Warning : Target \""..realProj.name.."\" is missing cfg.kind")
+			-- RG : Protobuf & mkheader projects don't define it, is it necessary?
+			oven.mergefield(usageKB, "compiledepends", { realProj.name })
 		end
 		
 		-- Propagate some fields from real project to usage project
@@ -104,6 +111,8 @@
 		end
 		
 		keyedblocks.resolveUses(usageKB, usageProj)
+		
+		return usageKB
 	end 
 --
 -- Finish the baking process for a solution or project level configurations.
@@ -156,19 +165,52 @@
 		cfg.longname = config.getBuildName(cfg.buildVariant, '|')
 		cfg.shortname = config.getBuildName(cfg.buildVariant, '_')
 		cfg.shortname = cfg.shortname:gsub(" ", "_")
+		
+		-- set default objdir
+		if not cfg.objdir then
+			local defaultObjDir = _OPTIONS['objdir'] or "$root/bin/%{prj.dirFromRoot}/%{prj.name}/%{cfg.shortname}"
+
+			-- objdir should be relative to $root unless specified otherwise
+			if (not defaultObjDir:startswith("/")) and (not defaultObjDir:startswith("$")) then
+				defaultObjDir = "$root/"..defaultObjDir
+			end
+
+			cfg.objdir = defaultObjDir
+		end
+		if not cfg.targetdir then
+			local defaultTargetDir = _OPTIONS['targetdir'] or cfg.objdir
+			 
+			-- targetdir should be relative to $root unless specified otherwise
+			if (not defaultTargetDir:startswith("/")) and (not defaultTargetDir:startswith("$")) then
+				defaultTargetDir = "$root/"..defaultTargetDir
+			end
+			 
+			cfg.targetdir = defaultTargetDir
+		end
 
 		if cfg.project and cfg.kind and cfg.kind ~= 'None' then
 			cfg.buildtarget = config.gettargetinfo(cfg)
 			oven.expandtokens(cfg, nil, nil, "buildtarget", true)
 			-- remove redundant slashes, eg. a//b
-			cfg.buildtarget.abspath = cfg.buildtarget.abspath:replace("//","/")
+			if (cfg.buildtarget or {}).abspath then
+				cfg.buildtarget.abspath = cfg.buildtarget.abspath:replace("//","/")
+			end
 			
 			cfg.linktarget = config.getlinkinfo(cfg)
 			oven.expandtokens(cfg, nil, nil, "linktarget", true)
-			cfg.linktarget.abspath = cfg.linktarget.abspath:replace("//","/") 
+			if (cfg.linktarget or {}).abspath then
+				cfg.linktarget.abspath = cfg.linktarget.abspath:replace("//","/") 
+			end
 		end
 		
 		oven.expandtokens(cfg, "config")
+		
+		-- Remove self references
+		-- This can happen if a library "uses" itself
+		if cfg.buildtarget and cfg.buildtarget.abspath then
+			oven.removefromfield( cfg.linkAsShared, { cfg.buildtarget.abspath } )
+			oven.removefromfield( cfg.linkAsStatic, { cfg.buildtarget.abspath } )
+		end		
 
 		return cfg
 				
@@ -198,11 +240,13 @@
 	
 		local basedir = project.getlocation(cfg.project)
 
-		local directory = cfg[field.."dir"] or cfg.targetdir or basedir
+		local directory = path.asRoot(path.getabsolute(cfg[field.."dir"] or cfg.targetdir or basedir))
 		local basename = cfg[field.."name"] or cfg.targetname or cfg.project.name
 		
 		-- in case a project has a slash in the name
-		basename = path.getbasename(basename)
+		if basename:contains("/") then
+			basename = basename:match(".*/([^/]*)")
+		end
 
 		local bundlename = ""
 		local bundlepath = ""
@@ -223,7 +267,7 @@
 		extension = cfg[field.."extension"] or extension
 
 		local info = {}
-		info.directory  = project.getrelative(cfg.project, directory)
+		info.directory  = directory -- project.getrelative(cfg.project, directory)
 		info.basename   = basename .. suffix
 		info.name       = info.basename .. extension
 		if not info.name:startswith(prefix) then
@@ -278,6 +322,9 @@
 
 	function config.getfileconfig(cfg, filename)
 		-- if there is no entry, then this file is not part of the config
+		if not cfg.files then
+			error("No files for "..cfg.project.name..":"..cfg.shortname)
+		end
 		local filecfg = cfg.files[filename]
 		if not filecfg then
 			return nil

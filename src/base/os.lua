@@ -19,7 +19,7 @@
 --		Copy a file using the default operating system C function
 --
 -- os.getcwd()
---		Returns the current working directory
+--		Returns the canonical current working directory. Use _CWD for the current working directory including symlinks.
 --
 -- os.is64bit()
 --		Returns true if the platform is 64bit
@@ -473,6 +473,22 @@
 			local cmd = "ln -s "..sourceFile.." "..linkTarget
 			os.execute(cmd)
 		end			
+	end
+	
+	function os.readlink(p)
+		local linkTarget = os.getSymlinkTarget(p)
+		if linkTarget then
+			local pdir = path.getdirectory(p)
+			local fullTarget = path.join(pdir, linkTarget)
+			return os.readlink(fullTarget)
+		end
+		local name = path.getname(p)
+		local parent = path.getdirectory(p)
+		if parent ~= '/' and parent ~= p then
+			return path.getabsolute(os.readlink(parent)..'/'..name)
+		else
+			return p
+		end				
 	end
 	
 	function os.copy(src, dest)

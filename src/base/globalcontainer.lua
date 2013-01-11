@@ -10,101 +10,129 @@
 	local keyedblocks = premake.keyedblocks  
 	local targets = premake5.targets
 	local config = premake5.config
-	-- explicitly requested projects
-	targets.requested = {}		-- requested[#] = prj or sln
+	
+	targets.requested = {}		-- explicitly requested list of prj or sln
+	-- implicit & explicitly requested
 	targets.prjToBuild = {}		-- prjToBuild[prjName] = prj
 	targets.slnToBuild = {}		-- slnToBuild[slnName] = sln
 	-- Keep track of all dependent projects
-	targets.prjToExport = {}	-- prjToExport[prjName] = prj
+	targets.prjToGenerate = {}	-- prjToGenerate[prjName] = prj
 	-- set of projectset names to include. nil = include everything
 	targets.includeProjectSets = nil
 	targets.prjNameToSet = {}	-- prjNameToSet[prjFullname] = set of projectsets containing prj
+	targets.dirToPrjs = {}		-- dirToPrjs[fullpath] = list of prjs
 	
 --
 -- Apply any command line target filters
 --
 	function globalContainer.filterTargets()
+	
+		for _,prj in pairs(targets.allReal) do
+			local dir = prj.basedir
+			targets.dirToPrjs[dir] = targets.dirToPrjs[dir] or {}
+			table.insert( targets.dirToPrjs[dir], prj )
+		end
+	
 		-- Read --projectset= option
 		if _OPTIONS['projectset'] then
 			targets.includeProjectSets = {}
 			local prjsets = _OPTIONS['projectset']:split(',')
 			for _,p in ipairs(prjsets) do
-				if p == 'default' then
-					targets.includeProjectSets[""] = ""
-				end
 				targets.includeProjectSets[p] = p
 			end
 		end
-		
-		-- Read command line args for specified targets
+	
+		-- Allow action to overload default command line filter behaviour	
 		local action = premake.action.current()
-		for _,v in ipairs(_ARGS) do
-			if v:endswith('/') then v = v:sub(1,#v-1) end
-			 
-			if not premake.action.get(v) then
-
-				if action.filterProjectsFromCommandLine then
-					action.filterProjectsFromCommandLine(v)
-				else
+		if action and action.filterTargets then
+			action.filterTargets()
+			
+		else
+		
+			-- Read command line args for specified targets
+			for _,v in ipairs(_ARGS) do
+				if v:endswith('/') then v = v:sub(1,#v-1) end
+				 
+				if not premake.action.get(v) then
+	
 					globalContainer.findBuildTarget(v)
 				end
 			end
-		end
-
-		-- If nothing is specified :
-		if table.isempty(targets.requested) then
-			
-			-- Build default premake file projects
-			if _OPTIONS['defaultbuilddir'] then
-				local defaultDir = path.getabsolute(_OPTIONS['defaultbuilddir'])
-				local found = false
-				for _,sln in pairs(targets.solution) do
-					if path.getdirectory(sln.script) == defaultDir and not targets.slnToBuild[sln.name] then
-						print("Build Solution : "..sln.name)
-						targets.slnToBuild[sln.name] = sln
-						table.insert( targets.requested, sln )
-						found = true
-					end 
-				end
-				for _,prj in pairs(targets.allReal) do
-					if path.getdirectory(prj.script) == defaultDir and not targets.prjToBuild[prj.name] then
-						print("Build Project : "..prj.name)
-						targets.prjToBuild[prj.name] = prj
-						table.insert( targets.requested, prj )
-						found = true
-					end 
+	
+			local visiblePrjsBySet = {}
+			-- If nothing is specified :
+			if table.isempty(targets.prjToBuild) and table.isempty(targets.slnToBuild) then
+				
+				-- Build default premake file projects
+				local function matchdir(prjSln) return true end
+				
+				if _OPTIONS['defaultbuilddir'] then
+					local dir = path.getabsolute(_OPTIONS['defaultbuilddir'])
+					local dirS = dir..'/'
+					matchdir = function(prjSln)
+						if prjSln.basedir == dir or prjSln.basedir:startswith(dirS) then
+							return true
+						end
+						return false
+					end
 				end
 				
-				if not found then 
-					print("Could not find the directory \""..defaultDir.."\" in the build tree. Did you include it?")
-					os.exit(1)
+				local foundSln = false
+				for _,sln in pairs(targets.solution) do
+					if (not targets.slnToBuild[sln.name]) and matchdir(sln) then
+						printDebug("Build Solution : "..sln.name)
+						targets.slnToBuild[sln.name] = sln
+						foundSln = true
+					end
+				end
+				for _,prj in pairs(targets.allReal) do
+					if (not targets.prjToBuild[prj.name]) and matchdir(prj) 
+					then
+						local prjSets = targets.prjNameToSet[prj.fullname] or toSet({ 'all' })
+						for prjSetName,_ in pairs(prjSets) do
+						    visiblePrjsBySet[prjSetName] = visiblePrjsBySet[prjSetName] or {}
+							table.insert( visiblePrjsBySet[prjSetName], prj.name )
+						end
+						
+						if project.inProjectSet(prj, targets.includeProjectSets) then
+							if not foundSln then
+								printDebug("Build Project : "..prj.name)
+							end
+							targets.prjToBuild[prj.name] = prj
+						end
+					end 
 				end
 			end
-		end
-					
-		-- ... or Build all solutions
-		if table.isempty(targets.requested) then
-			for _,sln in pairs(targets.solution) do
-				targets.slnToBuild[sln.name] = sln
-			end
-		end
-		
-		-- Add solution's projects to the build
-		for _,sln in pairs(targets.slnToBuild) do
-			for _,prj in ipairs(sln.projects) do
 			
-				-- Filter to selected project sets
-				if not prj.isUsage and project.inProjectSet(prj, targets.includeProjectSets) then
-					targets.prjToBuild[prj.name] = project.getRealProject(prj.name)
-				end
+			-- ... or explain why we have nothing to build
+			if table.isempty(targets.prjToBuild) then
+				globalContainer.onNoProjects(visiblePrjsBySet)
+				os.exit(1)
 			end
-		end
-		
-		if table.isempty(targets.prjToBuild) then
-			print("Warning : No projects in the selection!")
 		end		
 	end
-
+	
+	function globalContainer.onNoProjects(visiblePrjsBySet)
+		local msg = "Warning : No projects found"
+		if targets.includeProjectSets then
+			prjSets = table.concat(getKeys(targets.includeProjectSets), ",")
+			msg = msg .. " in projectset \""..prjSets.."\""
+		end
+		if _OPTIONS['defaultbuilddir'] then
+			local dir = path.getrelative(repoRoot, _OPTIONS['defaultbuilddir'])
+			msg = msg .. " under directory "..dir
+		end
+		print(msg)
+		
+		if not table.isempty(visiblePrjsBySet) then
+			print("Visible projectsets, build these with --projectset=X :")
+			for prjSetName,prjNameList in pairs(visiblePrjsBySet) do
+				local prjNames = table.concat(prjNameList, ",")
+				if #prjNames > 80 then prjNames = prjNames:sub(77)..'...' end
+				print("  "..prjSetName.." : "..prjNames)
+			end
+		end
+	end
 
 	function globalContainer.findBuildTarget(v)
 		local found = false
@@ -114,6 +142,11 @@
 			if sln.name == v or sln.name:contains(v..'/') or sln.name:endswith('/'..v) then
 				-- Add solution to the build
 				targets.slnToBuild[sln.name] = sln
+				for _,prj in ipairs(sln.projects) do
+					if (not prj.isUsage) and project.inProjectSet(prj, targets.includeProjectSets) then
+						targets.prjToBuild[prj.name] = prj
+					end
+				end
 				targets.requested[#targets.requested+1] = sln
 				found = true
 			end
@@ -174,6 +207,14 @@
 				print("Generating configuration '"..cfgNameList:first().."' ...")
 			else
 				print("Generating configurations : "..cfgNameList:mkstring(', ').." ...")
+			end
+		end
+		
+		-- Test for invalid aliases
+		for aliasName,fullPrjName in pairs(targets.aliases) do
+			local prj = targets.allReal[fullPrjName] or targets.allUsage[fullPrjName]
+			if not prj then
+				print("Warning : Could not find target \""..fullPrjName.."\" for alias \""..aliasName.."\"")
 			end
 		end
 		

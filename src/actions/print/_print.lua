@@ -29,13 +29,16 @@
 	newaction {
 		trigger		= "print",
 		shortname	= "Print meta-action",
-		description = "Explains the commands to be run for each configuration print [uses] [project name]",
+		description = "Explains the commands to be run for each configuration print [uses/usage] [project name]",
 		
 		isnextgen	= true,
 		
 		onStart = function()
 			if _ARGS['uses'] then
 				Print.level = 1
+			end
+			if _ARGS['usage'] then
+				Print.what = "usage"
 			end
 			Print.filterProj = targets.requested
 			table.sort(Print.filterProj, function (a,b) return a.name < b.name end )
@@ -101,13 +104,13 @@
 			return pRecursive(level, name, obj, nil)
 		end
 	end
-	local function p(level, name,obj) return Print.print(level, name,obj) end 
 	local function p0(name,obj) return Print.print(0,name,obj) end 
 	local function p1(name,obj) return Print.print(1,name,obj) end 
 	local function p2(name,obj) return Print.print(2,name,obj) end 
 	local function p3(name,obj) return Print.print(3,name,obj) end 
 	local function p4(name,obj) return Print.print(4,name,obj) end 
-	local function p5(name,obj) return Print.print(5,name,obj) end 
+	local function p5(name,obj) return Print.print(5,name,obj) end
+	local function p(str) return print(indentStr .. str) end 
 	
 	function Print.execute()
 		for _,prjOrSln in ipairs(Print.filterProj or {}) do
@@ -161,30 +164,32 @@
 			p0('Usage Requirements', uProj.name)
 		end
 		
-		indent(2)
-			globalContainer.bakeUsageProject(uProj)
-			project.bake(uProj)
-			for _,realCfg in pairs(prj.configs or {}) do
-				local filter = keyedblocks.getfilter(uProj, realCfg.buildVariant)
-				local ucfg = config.bake(uProj, filter)
-				p1("config", ucfg.shortname)
-				indent(2)			
-				for k,v in pairs(ucfg) do
-					if v and premake.fields[k] then
-						local level = Print.fieldLevel[k] or 5
-						if type(v) == 'table' then
-							if #v > 0 then
-								p(level, k, v)
+		if Print.what == 'usage' or prj.isUsage then
+			indent(2)
+				globalContainer.bakeUsageProject(uProj)
+				project.bake(uProj)
+				for _,realCfg in pairs(prj.configs or {}) do
+					local filter = keyedblocks.getfilter(uProj, realCfg.buildVariant)
+					local ucfg = config.bake(uProj, filter)
+					p1("config", ucfg.shortname)
+					indent(2)			
+					for k,v in pairs(ucfg) do
+						if v and premake.fields[k] then
+							local level = Print.fieldLevel[k] or 5
+							if type(v) == 'table' then
+								if #v > 0 then
+									Print.print(level, k, v)
+								end
+							else
+								Print.print(level, k, v)
 							end
-						else
-							p(level, k, v)
 						end
 					end
+					indent(-2)
 				end
-				indent(-2)
-			end
-		indent(-2)
-
+			indent(-2)
+		end
+		
 		if prj.isUsage then
 			return
 		end
@@ -202,13 +207,14 @@
 			local cfg2 = keyedblocks.getconfig(prj, cfg.filter or {}, nil, {})
 			p1('usevariant', cfg.usevariant)
 			p1('uses', cfg.uses)
+			--Print.printUses(cfg, prj)
 			p1('alwaysuses', cfg.alwaysuses)
 			local usesconfig = {}
 			for k,v in pairs(cfg.usesconfig or {}) do
 				if k == v then
-					table.insert( usesconfig, k )
+					table.insert( usesconfig, '['..k..']' )
 				else 
-					table.insert( usesconfig, k..'='..v )
+					table.insert( usesconfig, '['..k..']='..v )
 				end
 			end
 			p5('usesconfig', usesconfig)
@@ -306,5 +312,30 @@
 			--print('  ' .. tostring(k) .. ' = ' .. tostring(v))
 		end
 		p0('')
+	end
+	
+	function Print.printUses(cfg, realPrj)
+		p("uses :")
+		local toPrint = { "defines", "includedirs", "compiledepends", "flags", "links", "uses", 
+			"alwaysuses", "usesconfig", "toolset", "links", "linkAsStatic", "linkAsShared", "libdirs" }
+		
+		indent(2)
+		for _,uName in ipairs(cfg.uses) do
+			p(uName)
+			indent(2)
+			
+			local uProj = project.getUsageProject(uName, cfg.project.namespaces)
+			if uProj then
+				local filter = keyedblocks.getfilter(uProj, cfg.buildVariant)
+				local ucfg = config.bake(uProj, filter)
+				for _,k in ipairs(toPrint) do
+					if k ~= 'flags' or #ucfg[k] > 0 then
+						p1(k,ucfg[k])
+					end
+				end
+			end
+			indent(-2)
+		end
+		indent(-2)
 	end
 	

@@ -30,8 +30,16 @@
 				
 				printf(" --%-15s %s", trigger, description) 
 				if (option.allowed) then
+					local s = {}
 					for _, value in ipairs(option.allowed) do
-						printf("     %-14s %s", value[1], value[2])
+						if type(value) == 'string' then
+							table.insert(s, value)
+						else
+							printf("     %-14s %s", value[1], value[2])
+						end
+					end
+					if #s > 0 then
+						printf("     %s", table.concat(s, ', ')) 
 					end
 				end
 			end

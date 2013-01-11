@@ -28,14 +28,6 @@
 		-- temporary
 		isnextgen = true,
 		
-		valid_kinds     = { "ConsoleApp", "WindowedApp", "StaticLib", "SharedLib" },
-
-		valid_languages = { "C", "C++" },
-
-		valid_tools     = {
-			cc     = { "gcc", "icc" },
-		},
-		
 		buildFileHandle = nil,
 		
 		onStart = function()
@@ -74,6 +66,7 @@
 			clean.file(sln, path.join(ninja.builddir, 'buildedges.ninja'))
 			clean.file(sln, path.join(ninja.builddir, '.ninja_log'))
 			clean.file(sln, path.join(repoRoot, 'build.ninja'))
+			clean.file(sln, path.join(repoRoot, 'build_lastcmd.ninja'))
 		end,
 	}
 	
@@ -98,7 +91,7 @@
 
 			-- Must come after the main buildedges.ninja as we need to write out the default build statements
 			ninja.checkIgnoreFiles(sln.basedir)
-			ninja.generateDefaultBuild(sln, sln.basedir, globalScope)
+			ninja.generateDefaultBuild(sln.basedir, globalScope, sln)
 
 			slnDone[slnName] = true
 		end
@@ -109,8 +102,9 @@
 		if not prj then
 			print("Warning : Could not find project "..prjName)
 		else
-			local sln = prj.solution
-			ninja.onSolution(sln.name)
+			ninja.setNinjaBuildDir(prj.solution)
+			ninja.openFile(path.join(ninja.builddir, 'buildedges.ninja'))
+			ninja.generateProject(prj, globalScope, true)
 		end
 	end
 	
@@ -124,8 +118,12 @@
 		-- Write a default build for the repoRoot		
 		if repoRoot ~= ninja.builddir and (not ninja.scope[repoRoot]) then
 			ninja.checkIgnoreFiles(repoRoot)
-			ninja.generateDefaultBuild(nil, repoRoot, globalScope)
+			ninja.generateDefaultBuild(repoRoot, globalScope, nil)
 		end 
+		if table.isempty(targets.requested) and table.isempty(targets.slnToBuild) then
+			ninja.generateDefaultBuild(_WORKING_DIR, globalScope, nil)
+		end
+		ninja.generateDefaultBuild(_WORKING_DIR, globalScope, nil, path.join(repoRoot, 'build_lastcmd.ninja'))
 		
 		slnDone = {}
 	end
@@ -151,7 +149,7 @@
 			
 			if _OPTIONS['debug'] and type(h) == 'userdata' then
 				local fileLen = io.getsize(h)
-				local cwd = os.getcwd()
+				local cwd = _CWD
 				
 				if fileLen then
 					printf('Generated %s : %.0f kb', path.getrelative(cwd, filename), fileLen/1024.0)
@@ -176,20 +174,31 @@
 			ninja.checkIgnoreFiles(ninja.builddir)
 		end
 		ninja.builddir = path.getabsolute(ninja.builddir)
+		ninja.builddirFromRoot = nil
+		if ninja.builddir:startswith(repoRootPlain) then
+			ninja.builddirFromRoot = path.asRoot(ninja.builddir)
+			if ninja.builddirFromRoot:endswith('/') then
+				ninja.builddirFromRoot = ninja.builddirFromRoot:sub(1,#ninja.builddirFromRoot-1)
+			end
+		end
 	end
 	
 	function ninja.onExecute()
-		local args = Seq:new(_ARGS) 
+		local args = Seq:new(_ARGS)
+		local requested = Seq:new(targets.requested):select("name"):mkstring(' ')
+		
+		if table.isempty(targets.prjToBuild) and table.isempty(targets.slnToBuild) then
+			return
+		end 
 		
 		if not _OPTIONS['nobuild'] then
 			local cmd = 'ninja'
 			if _OPTIONS['threads'] then
 				cmd = cmd .. ' -j'..tostring(_OPTIONS['threads'])
 			end
-
-			local dir = os.getcwd()
-			os.chdir(repoRoot)
 			
+			cmd = cmd .. ' -f '..repoRoot..'/build_lastcmd.ninja'
+
 			print('Building with ninja...')
 			
 			if _OS == 'windows' then
@@ -202,12 +211,17 @@
 			if _OPTIONS['buildVerbose'] then
 				cmd = cmd .. ' -v'
 			end
-			if _OPTIONS['smartTerminal'] then
-				cmd = cmd .. ' --smartTerminal='.._OPTIONS['smartTerminal']
+			if _OPTIONS['ninja-flags'] then
+				local flags = _OPTIONS['ninja-flags']
+				if flags:startswith("\"") and flags:endswith("\"") then
+					flags = flags:sub(2,#flags-1)
+				end
+				cmd = cmd .. ' ' .. flags 
 			end
 			
+			cmd = cmd .. ' ' .. requested
+			
 			local rv = os.executef(cmd)
-			os.chdir(dir)
 			
 			if rv ~= 0 then
 				os.exit(rv)
@@ -224,10 +238,6 @@
 			{ dir = '.hg',  ignore = '.hgignore'  },
 		}
 		local foundFile = {}
-		
-		if _OPTIONS['automated'] then
-			return
-		end
 		
 		for _,sc in ipairs(sourceControls) do
 			if os.isdir(path.join(dir, sc.dir)) then  
@@ -308,6 +318,13 @@ timer.stop(tmr)
 -- Escape a string so it can be written to a ninja build file.
 --
 
+	local noEscape = toSet({ "$root", "$builddir", "${builddir}", "$in", "$out" })
+	local function escapeCallback(v)
+		if noEscape[v] then return v
+		else return "$"..v
+		end
+	end
+	
 	function ninja.esc(value)
 		local result
 		if (type(value) == "table") then
@@ -318,7 +335,8 @@ timer.stop(tmr)
 			return result
 		else
 			-- handle simple replacements
-			result = value:gsub("%$%(", "%$%$%(")
+			result = value:gsub("%$[^ /]*", escapeCallback)
+
 			return result
 		end
 	end
@@ -330,11 +348,15 @@ timer.stop(tmr)
 	-- Get the syntax for accessing a variable, with correct escaping
 	 
 	function ninja.escVarName(varName)
-		if string.sub(varName,1,1) == '$' then
+		local c = string.sub(varName,1,1) 
+		if c == '$' then
 			return varName
 		end
 		if #varName == 0 then
 			return varName
+		end
+		if c == '/' then
+			error("Invalid ninja variable name \""..varName.."\"")
 		end
    		varName = '${' .. varName .. '}'
     	return varName
@@ -442,13 +464,30 @@ timer.stop(tmr)
 		return var, true
 	end
 	
+	function ninja.toRelPath(v)
+		local v2 = v
+		if v:startswith("/") then
+			v2 = string.replace(v, repoRootPlain, "$root")
+		end
+		if ninja.builddirFromRoot then
+			v2 = v2:replace(ninja.builddirFromRoot, "${builddir}")
+		end
+		return v2,(v ~= v2)
+	end
+	
+	function ninja.toAbsPath(v)
+		v = string.replace(v, "$root", repoRootPlain)
+		v = string.replace(v, "$builddir", ninja.builddir)
+		v = string.replace(v, "${builddir}", ninja.builddir)
+		return v
+	end
+	
 	-- Substitutes variables in to v, to make the string the smallest size  
 	function ninjaVar:getBest(v)
-		if v == '' then return '' end
+		if v == '' then return '',true end
 		
-		local tmr = timer.start('ninja.getBest')
 		-- try $root first
-		v = string.replace(v, repoRoot, "$root/")
+		v = ninja.toRelPath(v)
 		local bestV = self.valueToName[v]
 		--[[
 		local bestV = v
@@ -469,9 +508,9 @@ timer.stop(tmr)
 		]]
 		if bestV then
 			v = ninja.escVarName(bestV)
+			return v,true
 		end
-		timer.stop(tmr)
-		return v
+		return v,false
 	end
 	
 	function ninjaVar:include(otherScopeName)	
@@ -488,11 +527,12 @@ timer.stop(tmr)
 	function ninjaVar:getBuildVars(inputs, weight, newVarPrefix)
 		newVarPrefix = newVarPrefix or 'tmp'
 		local rv = {}
+		local hasChanged
 		for k,v in pairs(inputs or {}) do
 			if v ~= '' and not v:startswith('$') then
 			
-				if v:find(repoRoot,1,true) then
-					v = string.replace(v, repoRoot, "$root/")
+				v,hasChanged = ninja.toRelPath(v)
+				if hasChanged then
 					inputs[k] = v
 				end
 			

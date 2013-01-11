@@ -14,6 +14,10 @@ local icc_cc = newtool {
 	
 	flagMap = {
 		AddPhonyHeaderDependency = "-MP",	 -- used by makefiles
+		AllowUndefinedSymbols = {
+			Yes = "-Wl,--undefined-symbols",
+			No = "-Wl,--no-undefined-symbols",
+		},
 		CreateDependencyFile = "-MMD",
 		CreateDependencyFileIncludeSystem = "-MD",
 		Inline = {
@@ -49,17 +53,18 @@ local icc_cc = newtool {
 		defines 		= '-D',
 		includedirs 	= '-I',
 		output			= '-o',
-		depfileOutput   = '-MF',
 	},
-	suffixes = {
-		depfileOutput   = '.d',
+	decorateFn = {
+		depfileOutput   = atool.generateDepfileOutput,
 	},
 	
 	-- System specific flags
 	getsysflags = function(self, cfg)
 		local cmdflags = {}
 		if cfg.system ~= premake.WINDOWS and cfg.kind == premake.SHAREDLIB then
-			table.insert(cmdflags, '-fPIC')
+			if not (cfg.flags or {}).fPIC then
+				table.insert(cmdflags, '-fPIC')
+			end
 		end
 		
 		if cfg.flags.Threading == 'Multi' then
@@ -104,9 +109,10 @@ local icc_asm = newtool {
 		'<command-line>: warning: "__GNUC_PATCHLEVEL__" redefined',
 	},
 	
-	-- Bug in icc, only writes Makefile style depfiles. Just disable it.
-	prefixes = table.exceptKeys(icc_cxx.prefixes, { 'depfileOutput' }),
-	suffixes = table.exceptKeys(icc_cxx.suffixes, { 'depfileOutput' }),
+	prefixes = icc_cxx.prefixes,
+	suffixes = icc_cxx.suffixes,
+	-- Bug, only writes Makefile style depfiles. Just disable it.
+	decorateFn = table.exceptKeys(icc_cxx.decorateFn, { 'depfileOutput' }),
 	flagMap = table.exceptKeys(icc_cxx.flagMap, { 'CreateDependencyFile', 'CreateDependencyFileIncludeSystem', }),
 }
 local icc_ar = newtool {
@@ -118,10 +124,6 @@ local icc_ar = newtool {
 	redirectStderr = true,
 --	filterStderr = { "xiar: executing " },
 	targetNamePrefix = 'lib',
-	
-	flagMap = {
-		WholeArchive = "-Wl,--whole-archive",
-	},
 }
 local icc_link = newtool {
 	toolName = 'link',
@@ -133,20 +135,23 @@ local icc_link = newtool {
 			Shared		= '-shared-libgcc -shared-intel',
 			Static		= '-static-libgcc -static-intel',		-- Might not work, test final binary with ldd. See http://www.trilithium.com/johan/2005/06/static-libstdc/
 		},
+		WholeArchive = "-Wl,--whole-archive",
 	},
 	prefixes = {
 		libdirs 		= '-L',
 		output 			= '-o',
-		rpath			= '-Wl,-rpath=',
 		linkoptions		= '',
 	},
 	suffixes = {
 		input 			= ' -Wl,--end-group',
 	},
 	decorateFn = {
-		linkAsStatic	= function(list) return atool.decorateLibList(list, '-Wl,-Bstatic', '-l'); end,
-		linkAsShared	= function(list) return atool.decorateLibList(list, '-Wl,-Bdynamic', '-l'); end,
+		linkAsStatic	= atool.decorateStaticLibList,
+		linkAsShared	= atool.decorateSharedLibList,
+		rpath			= atool.decorateRPath
 	},
+
+	separateSharedLibraryPaths = true,
 	
 	getsysflags = function(self, cfg)
 		if cfg == nil then
@@ -261,6 +266,31 @@ newtoolset {
 		newtool {
 			inheritfrom = icc_link,
 			binaryName = 'icpc12.1',
+		},
+	}
+}
+newtoolset {
+	toolsetName = 'icc13', 
+	tools = { 
+		newtool {
+			inheritfrom = icc_cc,
+			binaryName = 'icpc13',
+		},
+		newtool {
+			inheritfrom = icc_cxx,
+			binaryName = 'icpc13',
+		},
+		newtool {
+			inheritfrom = icc_asm,
+			binaryName = 'icpc13',
+		},
+		newtool {
+			inheritfrom = icc_ar,
+			binaryName = 'xiar13',
+		},
+		newtool {
+			inheritfrom = icc_link,
+			binaryName = 'icpc13',
 		},
 	}
 }

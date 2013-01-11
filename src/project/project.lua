@@ -45,8 +45,8 @@
 		-- initial build variant -> final build variant name 
 		prj.buildVariantMap = {}
 		
-		-- add this to the export list
-		targets.prjToExport[prj.name] = prj
+		-- add this to the generate list
+		targets.prjToGenerate[prj.name] = prj
 
 		timer.stop(tmr)
 		return prj
@@ -70,7 +70,7 @@
 		end
 		
 		-- Make sure this is in the build list
-		if not targets.prjToBuild[prj.name] then
+		if (not targets.prjToBuild[prj.name]) then
 			-- this branch will happen if you've got a projectset with outside dependencies
 			targets.prjToBuild[prj.name] = prj
 		end
@@ -142,7 +142,9 @@
 		-- Add usage requirements for the new configuration
 		local uProj = project.getUsageProject(prj.name)
 		if uProj then
-			config.addUsageConfig(prj, uProj, finalBuildVariant)
+			local usageKB = config.addUsageConfig(prj, uProj, finalBuildVariant)
+			-- hack : apply buildVariantMap
+			uProj.keyedblocks.__filter[initialBuildName] = usageKB
 		end
 		
 		timer.stop(tmr)
@@ -268,11 +270,7 @@
 		if prj then return prj end
 
 		if namespaces and name:contains("/") then
-			if type(namespaces) == 'string' then
-				namespaces = { namespaces }
-			else
-				namespaces = namespaces[#namespaces]
-			end
+			namespaces = nil
 		else
 		 	-- convert namespace from string to array
 			if type(namespaces) == 'string' then
@@ -284,6 +282,10 @@
 					prevNS = prevNS..n
 				end
 			end
+		end
+		
+		if name:startswith("/") then
+			name = name:sub(2)
 		end
 
 		-- check aliases		
@@ -303,8 +305,9 @@
 	
 		-- check supplied implicit namespaces
 		if not prj and namespaces then
-			local possibles = {}
-			for _,ns in ipairs(namespaces) do
+			for i = #namespaces,1,-1 do
+				local ns = namespaces[i]
+
 				-- Try prepending the namespace
 				local tryName = ns..name
 				local i = 0
@@ -316,13 +319,7 @@
 					end
 				end
 				prj = allProjects[tryName]
-				if prj then possibles[prj.fullname] = prj end
-			end
-			if table.size(possibles) > 1 then
-				error("Ambiguous project name \""..name.."\", do you mean "..table.concat(getKeys(possibles), ', ')..'?')
-			else
-				local k,v = next(possibles)
-				prj = v
+				if prj then return prj end
 			end
 			
 		end
@@ -462,8 +459,8 @@
 		prj.name           = fullname
 		prj.fullname       = fullname
 		prj.shortname      = shortname
-		prj.basedir        = os.getcwd()
-		prj.dirFromRoot    = path.asRoot(prj.basedir):replace("$root/","")
+		prj.basedir        = _CWD
+		prj.dirFromRoot    = _CWD:replace(repoRoot,"")
 		prj.script         = _SCRIPT
 		prj.uuid           = os.uuid()
 		prj.blocks         = { }
@@ -899,7 +896,9 @@
 	-- returns true if the project is in the set s
 	function project.inProjectSet(prj, s)
 		
-		if s == nil then return true end
+		if s == nil or s == 'all' then 
+			return true 
+		end
 		
 		if type(s) == 'table' then
 			-- Return true if the project is in any of the values in table s

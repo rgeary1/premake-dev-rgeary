@@ -63,6 +63,9 @@ function toolset:getCompileTool(cfg, fileExt)
 end
 
 function toolset:getLinkTool(cfg)
+	if cfg.kind == premake.OBJECTFILE then
+		return nil
+	end
     if cfg.kind == premake.STATICLIB then
     	return self.tools['ar'] or self.linkTool
     else

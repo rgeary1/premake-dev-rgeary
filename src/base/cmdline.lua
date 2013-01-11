@@ -75,17 +75,24 @@
 		aliases		= { 'j' },
 	}
 	
-	newoption
+	newoption 
 	{
-		trigger		= "automated",
-		description = "Automated mode, no interaction available.",
-		aliases 	= { 'a' },
+		trigger 	= "objdir",
+		description = "Set the output directory"
+	}
+	
+	newoption 
+	{
+		trigger 	= "targetdir",
+		description = "Set the output directory for binaries, default is the same as objdir"
 	}
 	
 	newoption
 	{
-		trigger     = "absolutepaths",
-		description = "Always generate absolute build paths",
+		trigger     = "buildpaths",
+		value       = "X",--bin|root|abs",
+		allowed     = { "bin", "root", "abs" },
+		description = "Relative base location of paths in the build script. Relative to bin (output) folder, source root, or absolute paths",
 	}
 	
 	newoption
@@ -161,7 +168,15 @@
 	}	
 	newoption {
 		-- passed through to ninja
-		trigger     = "smartTerminal",
-		value       = "[=on|off]",
-		description = "Ninja : Build with smart terminal on",
+		trigger     = "ninja-flags",
+		value       = "flags",
+		description = "Pass flags through to ninja",
+	}
+	newoption {
+		trigger     = "printBins",
+		description = "Print the paths to the binaries at the end of the build",
+	}
+	newoption {
+		trigger		= "tarName",
+		description = "Name of the release tarball"
 	}

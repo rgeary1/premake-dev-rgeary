@@ -59,15 +59,11 @@ newoption {
 			
 		configuration "Debug"
 			includedirs { "src/host/lua-5.1.4/src" }
-			targetdir   "bin/debug"
-			objdir			"obj/debug"
 			defines     "_DEBUG"
 			flags       { "Symbols" }
 			
 		configuration "Release"
 			includedirs { "src/host/lua-5.1.4/src" }
-			targetdir   "bin/release"
-			objdir			"obj/release"
 			defines     "NDEBUG"
 			flags       { "OptimizeSpeed", "Symbols" }
 
@@ -134,14 +130,10 @@ newoption {
 			}
 			
 		configuration "DebugJIT"
-			targetdir   "bin/debugJIT"
-			objdir			"obj/debugJIT"
 			defines     "_DEBUG"
 			flags       { "Symbols" }
 			
 		configuration "ReleaseJIT"
-			targetdir   "bin/releaseJIT"
-			objdir			"obj/releaseJIT"
 			defines     "NDEBUG"
 			flags       { "OptimizeSpeed", "Symbols" }
 			

@@ -55,7 +55,7 @@ static const luaL_Reg os_functions[] = {
 	{ "matchstart",  os_matchstart  },
 	{ "mkdir",       os_mkdir       },
 	{ "pathsearch",  os_pathsearch  },
-	{ "readlink",    os_readlink    },
+	{ "getSymlinkTarget",    os_get_symlink_target    },
 	{ "rmdir",       os_rmdir       },
 	{ "stat",        os_stat        },
 	{ "uuid",        os_uuid        },
@@ -65,6 +65,8 @@ static const luaL_Reg os_functions[] = {
 static const luaL_Reg string_functions[] = {
 	{ "startswith",  string_startswith },
 	{ "endswith",  string_endswith },
+	{ "createhash", string_createhash },
+	{ "createhashU", string_createhashU },
 	{ NULL, NULL }
 };
 
@@ -74,8 +76,6 @@ static const luaL_Reg debug_functions[] = {
 #endif
 	{ NULL, NULL }
 };
-
-static int verboseErrors = 0;
 
 /**
  * Program entry point.
@@ -241,9 +241,6 @@ int process_arguments(lua_State* L, int argc, const char** argv)
 		}
 	}
 
-	lua_pushboolean(L, verboseErrors);
-	lua_setglobal(L, "_VERBOSE_ERRORS");
-
 	/* push the Options and Args lists */
 	lua_setglobal(L, "_ARGS");
 	lua_setglobal(L, "_OPTIONS");
@@ -292,9 +289,6 @@ int process_option(lua_State* L, const char* arg, int singleHyphen)
 	{
 		scripts_path = value;
 	}
-
-	/* Set verbose debug error messages */
-	verboseErrors = 1; /* |= (strcmp(key, "debug") == 0);*/
 
 	return OKAY;
 }

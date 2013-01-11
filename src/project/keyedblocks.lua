@@ -221,8 +221,7 @@ function keyedblocks.getUsage(name, namespaces)
 	return usage, suggestionStr
 end
 
-function keyedblocks.bake(usage, filter)
-	local buildVariant = config.getBuildVariant(filter)
+function keyedblocks.bake(usage, buildVariant)
 	if not table.isempty(buildVariant) then
 		project.addconfig(usage, buildVariant)
 	end
@@ -292,6 +291,9 @@ function keyedblocks.getfilter(obj, buildVariant)
 				-- .usesconfig & filter is of the form { debug, "threading=multi", }
 				-- ie. set the filter on the key, match blocks on the value
 				if type(k) ~= 'number' then
+					if k:contains('=') then
+						k = k:match("[^=]*"):lower()
+					end
 					filter2[k:lower()] = v:lower()
 				end
 			end
@@ -328,16 +330,22 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	end
 
 	local tmr = timer.start('keyedblocks.getconfig')
-	local ignore = toSet({ '__config', '__name', '__parent', '__uses', '__cache', '__usesconfig' })
+	local ignore = toSet({ '__config', '__filter', '__name', '__parent', '__uses', '__cache', '__usesconfig' })
 	local kbBase = obj.keyedblocks
 	
 	table.insert( keyedblocks.active, obj )
+
+	local buildVariant = config.getBuildVariant(filter)
+	local buildVariantName = config.getBuildName(buildVariant)
+	local filterStr = getValues(filter)
+	table.sort(filterStr)
+	filterStr = table.concat(filterStr, ' ')..':'..tostring(fieldName)
 
 	-- Find the values & .removes structures which apply to 'keywords'
 	local accessedBlocks = {}
 	local foundBlocks = {}
 	foundBlocks.cfgs = {}
-	-- Set of all separate configurations
+	-- Set of all separate configurationsC
 
 	local function findBlocks(kb)
 		
@@ -350,12 +358,13 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 		
 		-- Apply parent before block
 		if kb.__parent then
-			keyedblocks.bake(kb.__parent, filter)
+			keyedblocks.bake(kb.__parent, buildVariant)
 			findBlocks(kb.__parent.keyedblocks)
 		end
 
 		-- New : Apply usages before block, so the block can override them
 		-- Old : Apply usages after block
+		--if kb.__uses and fieldName ~= 'usesconfig' then		-- Removed optimization as usevariant can exist in a usage() section?
 		if kb.__uses then
 			for useProjName, p in pairs(kb.__uses) do
 			
@@ -369,11 +378,11 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 					end
 					
 					-- evaluate the usage requirements of the target project, with the feature(s) enabled
-					keyedblocks.bake(p.prj, filter)
+					keyedblocks.bake(p.prj, buildVariant)
 					findBlocks(p.prj.keyedblocks)
 					
 				elseif p.prj then
-					keyedblocks.bake(p.prj, filter)
+					keyedblocks.bake(p.prj, buildVariant)
 					findBlocks(p.prj.keyedblocks)
 				end
 				filter = oldFilter
@@ -400,6 +409,27 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 			end
 		end
 
+		-- Iterate through the exact filters and apply any blocks that match
+		if kb.__filter then
+			-- check if this combination of terms has been specified
+			--[[local parts = buildVariantName:split(' ')
+			for _,v in ipairs(parts) do
+				for f,_ in pairs(kb.__filter) do
+					if f:contains(v) then 
+						foundBlocks.cfgs[buildVariantName] = buildVariantName
+						findBlocks(kb.__filter[f], filter)
+					end
+				end
+			end]]
+			if kb.__filter[buildVariantName] then
+				local parts = buildVariantName:split(' ')
+				for _,v in ipairs(parts) do
+					foundBlocks.cfgs[v] = v
+				end
+				findBlocks(kb.__filter[buildVariantName], filter)
+			end
+		end
+
 		-- check the 'not' terms
 		if kb.__notconfig then
 			for notTerm,notTermKB in pairs(kb.__notconfig) do
@@ -419,10 +449,6 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 		end
 
 	end -- findBlocks
-
-	local filterStr = getValues(filter)
-	table.sort(filterStr)
-	filterStr = table.concat(filterStr, ' ')
 	
 	kbBase.__cache = kbBase.__cache or {}
 	if kbBase.__cache[filterStr] then
@@ -501,6 +527,9 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	
 	if rv.alwaysdefines then
 		oven.mergefield(rv, 'defines', rv.alwaysdefines) 
+	end	
+	if rv.alwaysincludedir then
+		oven.mergefield(rv, 'includedirs', rv.alwaysincludedir) 
 	end	
 	
 	table.remove( keyedblocks.active )
@@ -584,18 +613,15 @@ end
 -- return or create the nested keyedblock for the given term
 function keyedblocks.createblock(kb, buildVariant)
 	
-	for k,v in pairs(buildVariant) do
-		v = v:lower()
-		if k == 'buildcfg' and v == 'all' then
-			-- ignore
-		else
-			kb.__config = kb.__config or {}
-			kb.__config[v] = kb.__config[v] or {}
-			kb = kb.__config[v]
-		end
-	end
+	local buildVariantName = config.getBuildName(buildVariant)
+	kb.__filter = kb.__filter or {}
 	
-	return kb
+	if kb.__filter[buildVariantName] then
+		return kb.__filter[buildVariantName], true
+	else
+		kb.__filter[buildVariantName] = {}
+		return kb.__filter[buildVariantName], false
+	end
 end
 
 --

@@ -82,7 +82,7 @@ local absPathCache = {}
 		
 		local result
 
-		cwd = cwd or os.getcwd()
+		cwd = cwd or _CWD
 		while cwd:endswith('/') do
 			cwd = cwd:sub(1,#cwd-1)
 		end

@@ -60,7 +60,7 @@ int os_getversion(lua_State* L);
 int os_is64bit(lua_State* L);
 int os_isdir(lua_State* L);
 int os_isfile(lua_State* L);
-int os_readlink(lua_State* L);
+int os_get_symlink_target(lua_State* L);
 int os_matchdone(lua_State* L);
 int os_matchisfile(lua_State* L);
 int os_matchname(lua_State* L);
@@ -73,5 +73,6 @@ int os_stat(lua_State* L);
 int os_uuid(lua_State* L);
 int string_startswith(lua_State* L);
 int string_endswith(lua_State* L);
-
+int string_createhash(lua_State* L);
+int string_createhashU(lua_State* L);
 

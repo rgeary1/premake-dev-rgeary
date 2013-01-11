@@ -34,7 +34,7 @@ int os_isdir(lua_State* L)
 }
 
 /* Return the real path of a symbolic link */
-int os_readlink(lua_State* L)
+int os_get_symlink_target(lua_State* L)
 {
 #if PLATFORM_LINUX || PLATFORM_BSD || PLATFORM_SOLARIS
 	#if !defined(PATH_MAX)
