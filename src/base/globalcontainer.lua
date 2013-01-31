@@ -21,7 +21,7 @@
 	targets.includeProjectSets = nil
 	targets.prjNameToSet = {}	-- prjNameToSet[prjFullname] = set of projectsets containing prj
 	targets.dirToPrjs = {}		-- dirToPrjs[fullpath] = list of prjs
-	
+	targets.releasedir = {}
 --
 -- Apply any command line target filters
 --
@@ -230,22 +230,9 @@
 
 			-- Add default configurations
 						
-			local cfglist = project.bakeconfigmap(prj)
-			for _,cfgpair in ipairs(cfglist) do
-				local buildVariant = {
-					buildcfg = cfgpair[1],
-					platform = cfgpair[2],				
-				}
-				
-				-- Add any command-line variants
-				if _OPTIONS['define'] then
-					local defines = _OPTIONS['define']:split(' ')
-					for _,v in ipairs(defines) do
-						buildVariant[v] = v
-					end
-				end
-				
-				project.addconfig(prj, buildVariant)
+			local buildVariants = project.getBuildVariants(prj)
+			for _,bv in ipairs(buildVariants) do
+				project.addconfig(prj, bv)
 			end
 			
 		end
@@ -279,18 +266,18 @@
 		
 		local parent
 		if ptype(usageProj) == 'project' and usageProj.solution then
-			parent = project.getUsageProject( usageProj.solution.name )
+			parent = targets.allUsage[usageProj.solution.name]
 		end
 		keyedblocks.create(usageProj, parent)
 
-		local realProj = project.getRealProject(usageProj.name, usageProj.namespaces)
+		local realProj = targets.allReal[usageProj.name]
 		if realProj then
 		
 			-- Bake the real project (RP) first, and apply RP's usages to RP
 			project.bake(realProj)
 			
 			-- Set up the usage target defaults from RP
-			for _,cfg in pairs(realProj.configs) do
+			for _,cfg in pairs(realProj.configs or {}) do
 
 				if cfg.buildVariant then
 					config.addUsageConfig(realProj, usageProj, cfg.buildVariant)

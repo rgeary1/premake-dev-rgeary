@@ -95,6 +95,9 @@ local gcc_cxx = newtool {
 	binaryName = 'g++',
 	fixedFlags = '-c -xc++',
 	extensionsForCompiling = { ".cc", ".cpp", ".cxx", ".c" },
+	prefixes = table.merge(gcc_cc.prefixes, {
+		cxxflags = ''
+	}),
 	flagMap = table.merge(gcc_cc.flagMap, {
 		NoExceptions   = "-fno-exceptions",
 		NoRTTI         = "-fno-rtti",
@@ -107,7 +110,7 @@ local gcc_asm = newtool {
 	fixedFlags = '-c -x assembler-with-cpp',
 	extensionsForCompiling = { '.s' },
 	
-	prefixes = gcc_cxx.prefixes,
+	prefixes = gcc_cc.prefixes,
 	suffixes = gcc_cxx.suffixes,
 	-- Bug, only writes Makefile style depfiles. Just disable it.
 	decorateFn = table.exceptKeys(gcc_cxx.decorateFn, { 'depfileOutput' }),
@@ -124,7 +127,7 @@ local gcc_ar = newtool {
 local gcc_link = newtool {
 	toolName = 'link',
 	binaryName = 'g++',
-	fixedFlags = '-Wl,--start-group',
+	fixedFlags = iif( _OPTIONS['disable-linker-groups'], "", '-Wl,--start-group' ),
 	extensionsForLinking = { '.o', '.a', '.so' },		-- possible inputs in to the linker
 	flagMap = {
 		Stdlib = {
@@ -139,7 +142,6 @@ local gcc_link = newtool {
 		linkoptions		= '',
 	},
 	suffixes = {
-		input 			= ' -Wl,--end-group',
 	},
 	decorateFn = {
 		linkAsStatic	= atool.decorateStaticLibList,
@@ -156,12 +158,13 @@ local gcc_link = newtool {
 		local cmdflags = {}
 		
 		if cfg.kind == premake.SHAREDLIB then
+			local soname = cfg.linktarget.name
 			if cfg.system == premake.MACOSX then
-				table.insert(cmdflags, "-dynamiclib -flat_namespace")
+				table.insert(cmdflags, "-dynamiclib -flat_namespace -Wl,--soname="..soname)
 			elseif cfg.system == premake.WINDOWS and not cfg.flags.NoImportLib then
 				table.insert(cmdflags, '-shared -Wl,--out-implib="' .. cfg.linktarget.fullpath .. '"')
 			else
-				table.insert(cmdflags, "-shared")
+				table.insert(cmdflags, "-shared -Wl,--soname="..soname)
 			end
 		end
 		

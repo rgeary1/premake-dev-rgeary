@@ -12,6 +12,7 @@ local icc_cc = newtool {
 	-- possible inputs in to the compiler
 	extensionsForCompiling = { ".c", },
 	
+	-- These are all for linux, windows flags are different
 	flagMap = {
 		AddPhonyHeaderDependency = "-MP",	 -- used by makefiles
 		AllowUndefinedSymbols = {
@@ -24,6 +25,15 @@ local icc_cc = newtool {
 			Disabled 	= "-inline-level=0",
 			ExplicitOnly = "-inline-level=1",
 			Anything 	= "-inline-level=2",
+		},
+		-- InterProceduralOptimization
+		IPO = {
+			None			= '-no-ip',
+			SingleFile		= '-ip',
+			MultiFile		= '-ipo',
+			MultiFile2		= '-ipo2',		-- use -ipo2 or higher if the compiler/linker is running out of memory 			
+			MultiFile3		= '-ipo3',			
+			MultiFile4		= '-ipo4',			
 		},
 		EnableSSE2     		= "-msse2",
 		EnableSSE3     		= "-msse3",
@@ -39,15 +49,28 @@ local icc_cc = newtool {
 			Fast		  	= "-fp-model fast=2",
 			Strict			= "-fp-model strict",
 		},
+		-- Determines whether C++ class hierarchy information is used to analyze and resolve C++ virtual function calls at compile time
+		OptClassAnalysis = {
+		 	On 				= "-opt-class-analysis",
+		 	Off 			= "-no-opt-class-analysis", 
+		},
 		Optimize = {
 			Off				= "-O0",
 			On				= "-O2",
 			Size			= "-Os",
-			Speed			= "-O3 -ip",
+			Speed			= "-O3",
 		},
 		Profiling      		= "-pg",
 		Symbols        		= "-g",
 		fPIC 				= "-fPIC",
+		VecReport = {
+			["0"]   		= '-vec-report0',
+			["1"]   		= '-vec-report1',
+			["2"]   		= '-vec-report2',
+			["3"]   		= '-vec-report3',
+			["4"]   		= '-vec-report4',
+			["5"]   		= '-vec-report5',
+		},
 	},
 	prefixes = {
 		defines 		= '-D',
@@ -89,10 +112,14 @@ local icc_cxx = newtool {
 	-- possible inputs in to the compiler
 	extensionsForCompiling = { ".cc", ".cpp", ".cxx", ".c" },
 	
+	prefixes = table.merge(icc_cc.prefixes, {
+		cxxflags = '',
+	}),
+	
 	flagMap = table.merge(icc_cc.flagMap, {
 		NoExceptions   = "-fno-exceptions",
 		NoRTTI         = "-fno-rtti",
-	})
+	}),
 }
 local icc_asm = newtool {
 	inheritFrom = icc_cxx,
@@ -123,18 +150,28 @@ local icc_ar = newtool {
 	
 	redirectStderr = true,
 --	filterStderr = { "xiar: executing " },
-	targetNamePrefix = 'lib',
+	--targetNamePrefix = 'lib',
 }
 local icc_link = newtool {
 	toolName = 'link',
 	binaryName = 'icpc',
-	fixedFlags = '-Wl,--start-group',
+	fixedFlags = iif( _OPTIONS['disable-linker-groups'], "", '-Wl,--start-group' ),
 	extensionsForLinking = { '.o', '.a', '.so' },		-- possible inputs in to the linker
 	flagMap = {
 		Stdlib = {
 			Shared		= '-shared-libgcc -shared-intel',
 			Static		= '-static-libgcc -static-intel',		-- Might not work, test final binary with ldd. See http://www.trilithium.com/johan/2005/06/static-libstdc/
 		},
+		-- InterProceduralOptimization
+		IPO = {
+			None			= '-no-ip',
+			SingleFile		= '-ip',
+			MultiFile		= '-ipo',
+			MultiFile2		= '-ipo2',		-- use -ipo2 or higher if the compiler/linker is running out of memory 			
+			MultiFile3		= '-ipo3',			
+			MultiFile4		= '-ipo4',			
+		},
+		Profiling		= "-pg",
 		WholeArchive = "-Wl,--whole-archive",
 	},
 	prefixes = {
@@ -143,7 +180,6 @@ local icc_link = newtool {
 		linkoptions		= '',
 	},
 	suffixes = {
-		input 			= ' -Wl,--end-group',
 	},
 	decorateFn = {
 		linkAsStatic	= atool.decorateStaticLibList,
@@ -160,12 +196,13 @@ local icc_link = newtool {
 		local cmdflags = {}
 		
 		if cfg.kind == premake.SHAREDLIB then
+			local soname = cfg.linktarget.name
 			if cfg.system == premake.MACOSX then
-				table.insert(cmdflags, "-dynamiclib -flat_namespace")
+				table.insert(cmdflags, "-dynamiclib -flat_namespace -Wl,--soname="..soname)
 			elseif cfg.system == premake.WINDOWS and not cfg.flags.NoImportLib then
 				table.insert(cmdflags, '-shared -Wl,--out-implib="' .. cfg.linktarget.fullpath .. '"')
 			else
-				table.insert(cmdflags, "-shared")
+				table.insert(cmdflags, "-shared -Wl,--soname="..soname)
 			end
 		end
 		

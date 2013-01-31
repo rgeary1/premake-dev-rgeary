@@ -9,6 +9,7 @@
 	local targets = premake5.targets
 	local keyedblocks = premake.keyedblocks
 	local config = premake5.config
+	local solution = premake.solution
 		
 --
 -- Flatten out a project and all of its configurations, merging all of the
@@ -205,6 +206,7 @@
 --
 
 	function project.bakeconfigmap(prj)
+		error("Replaced with project.getBuildVariants")
 		-- Apply any mapping tables to the project's initial configuration set,
 		-- which includes configurations inherited from the solution. These rules
 		-- may cause configurations to be added ore removed from the project.
@@ -236,7 +238,13 @@
 		return configs
 	end
 
-
+	function project.getBuildVariants(prj)
+		local slnBVs = solution.getBuildVariants(prj.solution)
+		
+		-- to do : support mapconfig
+		
+		return slnBVs
+	end
 --
 -- Returns an iterator function for the configuration objects contained by
 -- the project. Each configuration corresponds to a build configuration/
@@ -268,20 +276,11 @@
 	local function getProject(allProjects, name, namespaces)
 		local prj = allProjects[name]
 		if prj then return prj end
-
-		if namespaces and name:contains("/") then
-			namespaces = nil
-		else
-		 	-- convert namespace from string to array
-			if type(namespaces) == 'string' then
-				local namespace = namespaces
-				namespaces = {}
-				local prevNS = ''
-				for n in namespace:gmatch("[^/]+/") do
-					table.insert(namespaces, prevNS..n)
-					prevNS = prevNS..n
-				end
-			end
+		
+		if name:contains(':') then
+			name = name:match("[^:]*")
+			local prj = allProjects[name]
+			if prj then return prj end
 		end
 		
 		if name:startswith("/") then
@@ -303,7 +302,22 @@
 			prj = allProjects[tryName]
 		end
 	
-		-- check supplied implicit namespaces
+		-- check supplied namespaces
+		if namespaces and name:contains("/") then
+			namespaces = nil
+		else
+		 	-- convert namespace from string to array
+			if type(namespaces) == 'string' then
+				local namespace = namespaces
+				namespaces = {}
+				local prevNS = ''
+				for n in namespace:gmatch("[^/]+/") do
+					table.insert(namespaces, prevNS..n)
+					prevNS = prevNS..n
+				end
+			end
+		end	
+
 		if not prj and namespaces then
 			for i = #namespaces,1,-1 do
 				local ns = namespaces[i]
@@ -422,6 +436,7 @@
 		if isUsage and premake.api.scope.currentNamespace:sub(1,#name) == name then
 			local namespace = premake.api.scope.currentNamespace
 			fullname = name
+			shortname = name
 		else
 			namespace,shortname,fullname = project.getNameParts(name, premake.api.scope.currentNamespace)
 		end
@@ -467,8 +482,16 @@
 		prj.isUsage		   = isUsage;
 		
 		-- Create a default usage project if there isn't one
-		if (not isUsage) and (not project.getUsageProject(fullname, prj.namespaces)) then
-			project.createproject(fullname, sln, true)
+		-- Note : use targets.allUsage[] directly as we may already have an alias to another project with the same name
+		if (not isUsage) then
+			prj.usagePrj = targets.allUsage[fullname]
+			if not prj.usagePrj then
+				prj.usagePrj = project.createproject(fullname, sln, true)
+			end
+			prj.realPrj = prj
+		else
+			prj.usagePrj = prj
+			prj.realPrj = targets.allReal[fullname]
 		end
 		
 		return prj;

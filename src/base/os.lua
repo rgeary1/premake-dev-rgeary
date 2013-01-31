@@ -32,6 +32,7 @@
 --
 -- os.mkdir(dir)
 --		Creates a new directory (not recursive)
+--      This os.lua file overrides this to make it recursive
 --
 -- os.rmdir(dir)
 --		Removes directory dir (not recursive)
@@ -74,6 +75,22 @@
 			s = s:replace('$root/', repoRoot)
 		end
 		return builtin_isfile(s)
+	end
+
+	local builtin_isdir = os.isdir
+	function os.isdir(s)
+		if not s then 
+			return false 
+		end
+		if repoRoot then
+			s = s:replace('$root/', repoRoot)
+		end
+		return builtin_isdir(s)
+	end
+	
+	function os.exists(path)
+		path = path:replace('$root/', repoRoot or '')
+		return (os.stat(path) ~= nil)
 	end
 
 --
@@ -405,21 +422,16 @@
 			end	
 			return true
 		end
-	
-		-- recursively remove subdirectories
-		local dirs = os.matchdirs(p .. "/*")
-		for _, dname in ipairs(dirs) do
-			os.rmdir(dname)
+		
+		if os.readlink(p) == repoRoot then
+			error("Can't delete repo root "..repoRoot)
 		end
-
-		-- remove any files
-		local files = os.matchfiles(p .. "/*")
-		for _, fname in ipairs(files) do
-			os.remove(fname)
+		
+		if _OS == "windows" then
+			os.execute("rmdir /s \""..p.."\"")
+		else
+			os.execute("rm -rf \""..p.."\"")
 		end
-
-		-- remove this directory
-		builtin_rmdir(p)
 	end
 
 --
@@ -493,11 +505,16 @@
 	
 	function os.copy(src, dest)
 		if _OS == 'windows' then
-			local cmd = 'copy /Y '..src..' '..dest
+			local cmd = 'copy /Y "'..src..'" "'..dest..'"'
 			return os.execute(cmd)
 		else
-			local cmd = 'scp -q '..src..' ' ..dest
-			return os.execute(cmd)
+			if src:contains(":") or dest:contains(":") then
+				local cmd = 'scp -q "'..src..'" "' ..dest..'"'
+				return os.execute(cmd)
+			else
+				local cmd = 'cp --preserve -u "'..src..'" "' ..dest..'"'
+				return os.execute(cmd)
+			end
 		end
 	end
 	

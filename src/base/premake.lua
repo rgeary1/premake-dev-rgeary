@@ -19,6 +19,7 @@
 	buildvariant	= api.buildvariant
 	usevariant		= api.usevariant
 	release			= api.release
+	releasedir		= api.releasedir
 	projectset		= api.projectset
 	alias			= api.alias
 
@@ -29,6 +30,7 @@
 	premake.C           = "C"
 	premake.C7          = "c7"
 	premake.CONSOLEAPP  = "ConsoleApp"
+	premake.EXE			= "ConsoleApp"
 	premake.CPP         = "C++"
 	premake.GCC         = "gcc"
 	premake.HAIKU       = "haiku"

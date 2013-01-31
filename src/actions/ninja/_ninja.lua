@@ -134,7 +134,9 @@
 			ninja.buildFileHandle[filename] = premake.generateStart(filename, true)
 			globalScope = ninja.newScope(filename)
 		else
-			io.output(ninja.buildFileHandle[filename])
+			if not _OPTIONS['dryrun'] then 
+				io.output(ninja.buildFileHandle[filename])
+			end
 			globalScope = ninja.scope[filename]
 		end
 		return filename
@@ -186,6 +188,9 @@
 	function ninja.onExecute()
 		local args = Seq:new(_ARGS)
 		local requested = Seq:new(targets.requested):select("name"):mkstring(' ')
+		if _OPTIONS['printBins'] then
+			requested = requested..' printBinaries'
+		end
 		
 		if table.isempty(targets.prjToBuild) and table.isempty(targets.slnToBuild) then
 			return

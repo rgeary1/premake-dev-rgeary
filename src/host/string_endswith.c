@@ -86,3 +86,28 @@ int string_createhash(lua_State* L)
 
 	return 0;
 }
+
+/* From FNV-1 64bit hash function http://isthe.com/chongo/src/fnv/hash_64.c */
+int string_createhashS(lua_State* L)
+{
+	const char* str = luaL_optstring(L, 1, NULL);
+
+	if (str)
+	{
+		unsigned long long hval = 0ULL;
+		int i;
+
+		for(i=0; str[i] != '\0'; ++i)
+		{
+			hval += (hval << 1) + (hval << 4) + (hval << 5) +
+					(hval << 7) + (hval << 8) + (hval << 40);
+			hval ^= (unsigned long long)str[i];
+		}
+		char hashStr[21];
+		sprintf(hashStr, "%020llX", hval);
+		lua_pushlstring(L, hashStr, 20);
+		return 1;
+	}
+
+	return 0;
+}

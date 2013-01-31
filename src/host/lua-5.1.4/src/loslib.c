@@ -12,6 +12,7 @@
 #include <time.h>
 #ifndef _WIN32
 	#include <sys/time.h>
+  #include <sys/wait.h>   // WEXITSTATUS
 #endif
 
 #define loslib_c
@@ -39,7 +40,12 @@ static int os_pushresult (lua_State *L, int i, const char *filename) {
 
 
 static int os_execute (lua_State *L) {
-  lua_pushinteger(L, system(luaL_optstring(L, 1, NULL)));
+  int rv = system(luaL_optstring(L, 1, NULL));
+  int exitCode = 0;
+  if (WIFEXITED(rv)) {
+	  exitCode = WEXITSTATUS(rv);
+  }
+  lua_pushinteger(L, exitCode);
   return 1;
 }
 

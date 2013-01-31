@@ -75,4 +75,5 @@ int string_startswith(lua_State* L);
 int string_endswith(lua_State* L);
 int string_createhash(lua_State* L);
 int string_createhashU(lua_State* L);
+int string_createhashS(lua_State* L);
 

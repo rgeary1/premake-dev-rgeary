@@ -173,11 +173,11 @@ function keyedblocks.resolveUses(kb, obj)
 
 		for _,useProjName in ipairs(uses) do
 			
-			local usefeature = {}
+			local usevariant = {}
 			for v in useProjName:gmatch(':([^:]*)') do
-				table.insert( usefeature, v )
+				table.insert( usevariant, v )
 			end
-			if #usefeature == 0 then usefeature = nil end
+			if #usevariant == 0 then usevariant = nil end
 			useProjName = useProjName:match("[^:]*")
 			
 			local useProj = kb.__uses[useProjName]
@@ -203,7 +203,7 @@ function keyedblocks.resolveUses(kb, obj)
 						os.exit(1)
 					end
 				end
-				kb.__uses[useProjName] = { prj = useProj, usefeature = usefeature }
+				kb.__uses[useProjName] = { prj = useProj, usevariant = usevariant }
 			end
 		end
 	end
@@ -308,6 +308,8 @@ function keyedblocks.getfilter(obj, buildVariant)
 	if loop >= loopMax then
 		print("Maximum recursion reached, configuration filter is oscillating : ")
 		for _,f in ipairs(filterList) do
+			f = mkstring(f):split(' ')
+			table.sort(f) 
 			print(mkstring(f))
 		end
 		error("Please change your configuration, you've defined an unstable loop")
@@ -369,16 +371,23 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 			for useProjName, p in pairs(kb.__uses) do
 			
 				local oldFilter = filter
-				if p.usefeature then
+				local oldBuildVariant = buildVariant
+				local oldBuildVariantName = buildVariantName
+				if p.usevariant then
 					-- Add the build feature to the target project's config list
 					filter = table.shallowcopy(filter)
-					for _,feature in ipairs(p.usefeature) do
-						local k,v = config.getkeyvalue(feature) 
+					buildVariant = table.shallowcopy(buildVariant)
+					for _,variant in ipairs(p.usevariant) do
+						local k,v = config.getkeyvalue(variant) 
+						buildVariant[k] = v
 						filter[k] = v
 					end
+					buildVariantName = config.getBuildName(buildVariant)
 					
 					-- evaluate the usage requirements of the target project, with the feature(s) enabled
-					keyedblocks.bake(p.prj, buildVariant)
+					local newCfg = project.addconfig(p.prj, buildVariant)
+					buildVariant = newCfg.buildVariant
+					filter = newCfg.filter
 					findBlocks(p.prj.keyedblocks)
 					
 				elseif p.prj then
@@ -386,6 +395,8 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 					findBlocks(p.prj.keyedblocks)
 				end
 				filter = oldFilter
+				buildVariant = oldBuildVariant
+				buildVariantName = oldBuildVariantName
 				
 			end
 		end
@@ -422,8 +433,7 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 				end
 			end]]
 			if kb.__filter[buildVariantName] then
-				local parts = buildVariantName:split(' ')
-				for _,v in ipairs(parts) do
+				for _,v in ipairs(buildVariant) do
 					foundBlocks.cfgs[v] = v
 				end
 				findBlocks(kb.__filter[buildVariantName], filter)
@@ -492,7 +502,7 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	for _,removeBlock in ipairs(removes) do
 		if not fieldName then
 			for k,v in pairs(removeBlock) do
-				oven.removefromfield(rv[k], v)
+				oven.removefromfield(rv[k], v, k)
 			end
 		elseif removes[fieldName] then
 			for k,v in pairs(removeBlock) do

@@ -96,7 +96,14 @@
 			if not prj.isUsage then
 				for cfg in project.eachconfig(prj) do
 					if cfg.objdir then
-						clean.directory(prj, cfg.objdir, true)
+					
+						-- Clean all configurations
+						local objdirExcludingCfg = cfg.objdir:replace(cfg.shortname,"")
+						if cfg.toolset then
+							objdirExcludingCfg = objdirExcludingCfg:replace(cfg.toolset,"")
+						end
+						clean.directory(prj, objdirExcludingCfg, true)
+						
 					end
 					if cfg.linktarget and cfg.linktarget.directory then
 						clean.directory(prj, cfg.linktarget.directory, true)

@@ -189,6 +189,13 @@
 					define(v)
 			end
 			configuration {}
+			
+			-- Add to usevariant
+			if _OPTIONS['usevariant'] then
+				_OPTIONS['usevariant'] = _OPTIONS['usevariant'] .. ',' .. _OPTIONS['define']
+			else
+				_OPTIONS['usevariant'] = _OPTIONS['define']
+			end
 		end		
 		
 		-- Search for a system-level premake4-system.lua file
@@ -242,6 +249,12 @@
 		if _OPTIONS['toolset'] then
 			toolset(_OPTIONS['toolset'])
 		end
+		if _OPTIONS['usevariant'] then
+			local variants = _OPTIONS['usevariant']:split(',')
+			usevariant(variants)
+		end
+		
+		premake.option.refresh()
 		
 		if (os.isfile(fname) and requirePremakeFile) then
 			timer.start('Load build script')

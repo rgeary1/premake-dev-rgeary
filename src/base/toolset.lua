@@ -31,20 +31,6 @@ function toolset:getdefault(cfg)
 end
 
 --
--- Construct toolInputs 
---
-function toolset:getToolInputs(cfg)
-	local t = {}
-	t.defines 		= cfg.defines
-	t.includedirs 	= cfg.includedirs
-	t.libdirs 		= cfg.libdirs
-	t.buildoptions	= cfg.buildoptions
-	t.default		= '$in'
-	
-	return t
-end
-
---
 -- Toolset only provides "compile" and "link" features, but this allows 
 --  for different tool names for different configurations
 --	

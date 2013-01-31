@@ -356,3 +356,14 @@
 		return result
 	end	
 		
+	function table.mergeRecursive(src, dest)	
+		dest = dest or {}
+		for k,v in pairs(src) do
+			if dest[k] and type(v) == 'table' then
+				dest[k] = table.mergeRecursive(v, dest[k])
+			else
+				dest[k] = table.deepcopy(v)
+			end
+		end
+		return dest
+	end

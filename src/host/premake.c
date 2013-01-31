@@ -67,6 +67,7 @@ static const luaL_Reg string_functions[] = {
 	{ "endswith",  string_endswith },
 	{ "createhash", string_createhash },
 	{ "createhashU", string_createhashU },
+	{ "createhashS", string_createhashS },
 	{ NULL, NULL }
 };
 

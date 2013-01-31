@@ -28,8 +28,8 @@
 		local prefix
 
 		-- add to master list keyed by both name and index
-		if name == '_GLOBAL_CONTAINER' then
-			ptypeSet( sln, "globalcontainer" )
+		if name == '_GLOBAL' then
+			ptypeSet( sln, "global" )
 		else
 			targets.solution[name] = sln
 			ptypeSet( sln, "solution" )
@@ -152,8 +152,10 @@
 		local configs = {}
 		for _,prj in pairs(sln.projects) do
 			for cfgName,cfg in pairs(prj.configs or {}) do
-				local bakedCfg = config.bake(sln, cfg.buildVariant )
-				configs[cfgName] = bakedCfg
+				if not configs[cfgName] then
+					--local bakedCfg = config.bake( sln, cfg.buildVariant )
+					configs[cfgName] = { name = cfgName }
+				end
 			end
 		end
 		
@@ -356,3 +358,37 @@
 		return sln.projects[idx]
 	end
 	
+--
+--  Returns all the build variants for the solution
+--   This is the buildcfgs specified by configurations {} and platforms {} statements
+	function solution.getBuildVariants(sln)
+		
+		if not sln.buildVariants then
+			local configs = table.fold(sln.configurations or {}, sln.platforms or {})
+			local selectedCfgs
+			if _OPTIONS['config'] then 
+				selectedCfgs = toSet(_OPTIONS['config']:split(",")) 
+			end 
+	
+			local buildVariants = {}	
+			for _, pairing in ipairs(configs) do
+				local bv = {
+					buildcfg = pairing[1],
+					platform = pairing[2],
+				}
+				
+				if selectedCfgs and not selectedCfgs[bv.buildcfg] then
+					bv = nil
+				end
+				
+				if bv then 
+					table.insert(buildVariants, bv)
+				end
+			end
+			
+			sln.buildVariants = buildVariants
+		end
+
+
+		return sln.buildVariants
+	end

@@ -180,3 +180,14 @@
 		trigger		= "tarName",
 		description = "Name of the release tarball"
 	}
+	newoption {
+		trigger		= "usevariant",
+		value		= "X",
+		description = "Build the code with variant \"X\" enabled",
+	}
+	-- temporary
+	newoption {
+		trigger 	= "disable-linker-groups",
+		description	= "Remove the -Wl,--start-group ... -Wl,--end-group linker grouping, to allow -ipo & quantify builds",
+	}
+	

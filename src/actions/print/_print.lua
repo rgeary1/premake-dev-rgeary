@@ -32,15 +32,61 @@
 		description = "Explains the commands to be run for each configuration print [uses/usage] [project name]",
 		
 		isnextgen	= true,
-		
-		onStart = function()
-			if _ARGS['uses'] then
-				Print.level = 1
+	
+		filterTargets = function ()
+			Print.filterProj = {}
+			for _,v in ipairs(_ARGS) do
+				if v == 'uses' then
+					Print.level = 1
+				end
+				if v == 'usage' then
+					Print.what = "usage"
+				end
+				local sln = targets.solution[v]
+				if premake.action.get(v) then
+					-- do nothing
+				elseif sln then
+					table.insert( Print.filterProj, sln )
+					table.insert( targets.requested, sln )
+				else
+					local prj = project.getRealProject(v) or project.getUsageProject(v)
+					local defaultBuildDir = _OPTIONS['defaultbuilddir']
+					if not prj then
+						-- try to match the name
+						for _,p in pairs(targets.allReal) do
+							if (not defaultBuildDir) or p.basedir:startswith(defaultBuildDir) then
+								if p.shortname == v then
+									prj = p
+									break
+								end
+							end
+						end
+						-- try to match the name
+						for _,p in pairs(targets.allUsage) do
+							if (not defaultBuildDir) or p.basedir:startswith(defaultBuildDir) then
+								if p.shortname == v then
+									prj = p
+									break
+								end
+							end
+						end
+						-- match any part of the name
+						for _,p in pairs(targets.allReal) do
+							if (not defaultBuildDir) or p.basedir:startswith(defaultBuildDir) then
+								if p.name:contains(v) then
+									prj = p
+									break
+								end
+							end
+						end
+					end
+					if prj then
+						table.insert( Print.filterProj, prj )
+						targets.prjToBuild[prj.name] = prj
+						table.insert( targets.requested, prj )
+					end					
+				end
 			end
-			if _ARGS['usage'] then
-				Print.what = "usage"
-			end
-			Print.filterProj = targets.requested
 			table.sort(Print.filterProj, function (a,b) return a.name < b.name end )
 			if #Print.filterProj == 0 then
 				print("No projects specified")
@@ -168,8 +214,12 @@
 			indent(2)
 				globalContainer.bakeUsageProject(uProj)
 				project.bake(uProj)
-				for _,realCfg in pairs(prj.configs or {}) do
-					local filter = keyedblocks.getfilter(uProj, realCfg.buildVariant)
+				local buildVariants = Seq:new(prj.configs or {}):select('buildVariant'):toTable()
+				if table.isempty(buildVariants) then
+					buildVariants = solution.getBuildVariants(prj.solution)
+				end
+				for _,bv in pairs(buildVariants) do
+					local filter = keyedblocks.getfilter(uProj, bv)
 					local ucfg = config.bake(uProj, filter)
 					p1("config", ucfg.shortname)
 					indent(2)			

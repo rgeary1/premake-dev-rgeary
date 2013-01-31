@@ -144,7 +144,7 @@
 		local context = _cfg._expandTokensContext
 		
 		if not context then 
-			local cfgproxy = {}
+			--[[local cfgproxy = {}
 			setmetatable(cfgproxy, {
 				__index = function(cfg, key)
 					-- pass through access to non-Premake fields
@@ -154,13 +154,13 @@
 					end				
 					return _cfg[key]
 				end	
-			})
+			})]]
 				
 			-- build a context for the tokens to use
 			context = {
 				sln = cfg.solution,
 				prj = cfg.project,
-				cfg = cfgproxy,
+				cfg = cfg,
 				file = filecfg,
 				cache = {},
 			}
@@ -256,10 +256,9 @@ timer.stop(tmr)
 	local function expandToken(token)
 		local result, err = expander(token, expandTokenContext)
 		if not result then
-			local location = ((context.sln or {}).name or '') ..'/'
-				..((context.prj or {}).name or '')..'/'
-				..((context.cfg or {}).shortname or '')
-			print("Token expansion error : "..err .. ' in ' .. value..' at '..location, 0)
+			local location = ((expandTokenContext.prj or {}).name or '')..':'
+				..((expandTokenContext.cfg or {}).shortname or '')
+			print("Token expansion error : "..err .. ' in ' .. token..' at '..location, 0)
 			os.exit(1)
 		end
 		return result
@@ -591,17 +590,19 @@ timer.stop(tmr)
 
 	function oven.remove(cfg, removes, filterField)
 		if filterField then
-			oven.removefromfield(cfg[filterField], removes[filterField])
+			oven.removefromfield(cfg[filterField], removes[filterField], filterField)
 		else
 			for fieldname, values in pairs(removes) do
-				oven.removefromfield(cfg[fieldname], values)
+				oven.removefromfield(cfg[fieldname], values, fieldname)
 			end
 		end
 	end
 
-	function oven.removefromfield(field, removes)
+	function oven.removefromfield(field, removes, fieldName)
 		local tmr = timer.start('oven.removefromfield')
 		if field and removes then
+			local toLower = (not (premake.fields[fieldName] or {}).isCaseSensitive)
+			
 			for key, pattern in ipairs(removes) do
 				local wpattern = path.wildcards(pattern)
 				local found = true
@@ -610,12 +611,16 @@ timer.stop(tmr)
 					found = field[pattern]
 				end
 				
-				if found then	
-					wpattern = wpattern:lower()
+				if found then
+					if toLower then	
+						wpattern = wpattern:lower()
+					end
 					
 					local i = 1
 					while i <= #field do
-						local value = field[i]:lower()
+						local value = field[i]
+						if toLower then value = value:lower() end	
+
 						if value:match(wpattern) == value then
 							field[ field[i] ] = nil
 							table.remove(field, i)

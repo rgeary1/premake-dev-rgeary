@@ -81,6 +81,10 @@
 			field.kind = field.kind:sub(1, -6)
 			field.isList = true
 		end
+		
+		if field.kind == 'file' or field.kind == 'path' or field.kind == 'directory' then
+			field.isCaseSensitive = true
+		end
 
 		for _,n in ipairs(names) do
 			if rawget(_G,n) then
@@ -396,14 +400,9 @@
 					return allowedValues
 				end
 				
-				allowedValues = toSet(allowedValues, true)
-				if allowedValues[valueL] then
-					return allowedValues[valueL]
-				else
-					for _,v in ipairs(allowedValues) do
-						if valueL == v:lower() then
-							return v
-						end
+				for _,v in ipairs(allowedValues) do
+					if valueL == v then
+						return v
 					end
 				end
 			else
@@ -414,7 +413,7 @@
 			
 			errMsg = "invalid value '" .. value .. "'."
 			if allowedValues and type(allowedValues)=='table' then
-				errMsg = errMsg..' Allowed values are {'..table.concat(allowedValues, ' ')..'}'
+				errMsg = errMsg..' Allowed values are {'..table.concat(allowedValues, ' ')..' }'
 			end
 			return nil, errMsg
 
@@ -566,12 +565,18 @@
 		target = target[name]
 		
 		if type(values) == 'string' then
-			values = { values }
+			values = values:split(' ')
 		end
 		
 		for k,v in pairs(values) do
 			if type(k) == 'number' then
-				target[v] = v
+				if v:contains('=') then
+					k = v:match("^[^=]*")
+					v = v:match("=(.*)$")
+				else
+					k = v
+				end
+				target[k] = v
 			else
 				target[k] = v
 			end
@@ -634,9 +639,10 @@
 		api.setstring(target, name, field, value)
 		
 		-- don't convert in to absolute if it's tokenised
-		if not target[name]:startswith('%') then
-			target[name] = path.getabsolute(target[name])
-			target[name] = path.asRoot(target[name])
+		local v = target[name]
+		if not v:match('^[%%$]') then
+			v = path.getabsolute(v)
+			target[name] = path.asRoot(v)
 		end 
 	end
 
@@ -729,6 +735,7 @@
 		name = "buildoptions",
 		scope = "config",
 		kind = "string",
+		isCaseSensitive = true,
 		isList = true,
 		expandtokens = true,
 		namealiases = { "buildflags", "cflags" },
@@ -806,6 +813,7 @@
 		name = "compilerwrapper",
 		scope = "config",
 		kind = "string",
+		isCaseSensitive = true,
 		expandtokens = true,
 	}
 
@@ -834,6 +842,7 @@
 		name = "cxxflags",
 		kind = "string",
 		isList = true,
+		isCaseSensitive = true,
 		scope = "config",
 	}
 	
@@ -886,6 +895,7 @@
 		name = "defines",
 		scope = "config",
 		kind = "string",
+		isCaseSensitive = true,
 		isList = true,
 		expandtokens = true,
 		splitOnSpace = true,
@@ -900,6 +910,7 @@
 		isList = true,
 		expandtokens = true,
 		splitOnSpace = true,
+		isCaseSensitive = true,
 		namealiases = { "alwaysdefine" },
 		usagePropagation = "Always",
 	}
@@ -949,6 +960,8 @@
 			Float = { "Fast", "Strict", },
 			"fPIC",
 			Inline = { "Disabled", "ExplicitOnly", "Anything", },
+			-- InterProceduralOptimization, with 1, 2, 3 or 4 intermediate files 
+			IPO = { "None", "SingleFile", "MultiFile", "MultiFile2", "MultiFile3", "MultiFile4" },
 			"Managed",
 			"MFC",
 			Threading = {
@@ -968,6 +981,8 @@
 			"NoPCH",
 			"NoRTTI",
 			Optimize = { 'On', 'Off', 'Size', 'Speed' },
+			-- Determines whether C++ class hierarchy information is used to analyze and resolve C++ virtual function calls at compile time
+			OptClassAnalysis = { 'On', 'Off', },
 			"Profiling",			-- Enable profiling compiler flag
 			"SEH",
 			"StaticRuntime",
@@ -975,6 +990,18 @@
 			"Symbols",
 			"Unicode",
 			"Unsafe",
+			
+			-- Intel compiler vectorizer report
+			--  n=0    no diagnostic information
+            --  n=1    indicate vectorized loops (DEFAULT when enabled)
+            --  n=2    indicate vectorized/non-vectorized loops
+            --  n=3    indicate vectorized/non-vectorized loops and prohibiting
+            --         data dependence information
+            --  n=4    indicate non-vectorized loops
+            --  n=5    indicate non-vectorized loops and prohibiting data
+            --         dependence information
+			VecReport = { "0", "1", "2", "3", "4", "5" },
+			  
 			Warnings = { 'On', 'Off', 'Extra' },
 			"WholeArchive",
 			"WinMain",
@@ -1126,14 +1153,6 @@
 		},
 	}
 
-	-- Command line flags passed to both 'ar' and 'link' tools	
-	api.register {
-		name = "ldflags",
-		scope = "config",
-		kind = "string",
-		isList = true,
-	}
-
 	api.register {
 		name = "libdirs",
 		scope = "config",
@@ -1151,6 +1170,7 @@
 		kind = "string",
 		isList = true,
 		expandtokens = true,
+		isCaseSensitive = true,
 		namealiases = { "linkflags" },
 		usagePropagation = "WhenSharedOrStaticLib",
 	}
@@ -1208,6 +1228,7 @@
 		scope = "config",
 		kind = "string",
 		expandtokens = true,
+		isCaseSensitive = true,
 	}
 	
 	api.register {
@@ -1336,11 +1357,28 @@
 	--  Example : releasedir { bin = '.', scripts = './scripts', installbin='/usr/bin/ }
 	--  Use %{releaseName} for the name of the release 
 	--
+	function api.releasedir(t)
+		if type(t) == 'table' then
+			for label,dirOrFn in pairs(t) do
+				targets.releasedir[label] = dirOrFn			
+			end		
+		else
+			error("Unexpected type "..type(t))
+		end
+	end
+	
+	-- Source Control Management
 	api.register {
-		name = "releasedir",
-		scope = "global",
-		kind = "string",			-- string not path, to keep the paths as relative
-		isKeyedTable = true,
+		name = "scmtype",
+		scope = "solution",
+		kind = "string",
+		allowed = { "git", "hg", },
+	}
+	
+	api.register {
+		name = "scmurl",
+		scope = "solution",
+		kind = "string",
 	}
 
 	api.register {
@@ -1413,6 +1451,7 @@
 		scope = "config",
 		kind = "string",
 		expandtokens = true,
+		isCaseSensitive = true,
 	}
 
 	api.register {
@@ -1420,6 +1459,7 @@
 		scope = "config",
 		kind = "string",
 		expandtokens = true,
+		isCaseSensitive = true,
 	}
 
 	api.register {
@@ -1427,6 +1467,7 @@
 		scope = "config",
 		kind = "string",
 		expandtokens = true,
+		isCaseSensitive = true,
 	}
 
 	api.register {
@@ -1434,6 +1475,7 @@
 		scope = "config",
 		kind = "string",
 		expandtokens = true,
+		isCaseSensitive = true,
 	}
 
 	api.register {
@@ -1736,7 +1778,7 @@
 			name = parent.name
 		elseif type(name) ~= 'string' then
 			error('Invalid parameter for usage, must be a string')
-		elseif name == '_GLOBAL_CONTAINER' then
+		elseif name == '_GLOBAL' then
 			return api.solution(name)
 		end
 
@@ -1748,8 +1790,8 @@
 			sln = premake.CurrentContainer
 		end
 					
-		if (ptype(sln) ~= "solution" and ptype(sln) ~= 'globalcontainer') then
-			error("no active solution or globalcontainer", 2)
+		if (ptype(sln) ~= "solution" and ptype(sln) ~= 'global') then
+			error("no active solution or global", 2)
 		end
 
   		-- if this is a new project, or the project in that slot doesn't have a usage, create it
@@ -1764,7 +1806,28 @@
   	
   		return premake.CurrentContainer
   	end
+  	
+  	local namesChecked = {}
+  	function api.checkName(name)
+  		if not name then error("Invalid name : (nil)") end
+  		
+  		if namesChecked[name] then return end
+  	
+  		if name == "." then 
+  			error("Invalid target name \".\"", 2)
+  		elseif name == "/" then
+  			error("Invalid target name \"/\"", 2)
+  		elseif name:contains("$") then
+  			error("Invalid target name containing character $ : "..name, 2)
+  		elseif name:contains("%") then
+  			error("Invalid target name containing character % : "..name, 2)
+  		end
+  		
+  		namesChecked[name] = name 
+  	end
   
+  	-- name can have a ":cfg" suffix to specify a configuration directly, 
+  	--  or "#ver" suffix to specify a version directly
   	function api.project(name)
   		if (not name) then
   			--Only return non-usage projects
@@ -1773,13 +1836,26 @@
   			return premake.CurrentContainer
 		end
 		
+		-- Check for invalid names
+		api.checkName(name)
+
+		-- Find any :cfg or #version suffixes		
+		local cfgName = {}
+		local prjVersion
+		for tag in name:gmatch("[:#][^:#]*") do
+			if tag:startswith(":") then
+				table.insert( cfgName, tag:sub(2) )
+			elseif tag:startswith("#") then
+				if prjVersion then
+					error("Can't specify more than one version in a project name - "..name)
+				end
+				prjVersion = tag:sub(2)
+			end
+		end
+		prjVersion = prjVersion or "1.0+"
+		
   		-- identify the parent solution
-  		local sln
-  		if (ptype(premake.CurrentContainer) == "project") then
-  			sln = premake.CurrentContainer.solution
-  		else
-  			sln = premake.CurrentContainer
-  		end			
+  		local sln = premake.api.scope.solution
   		if (ptype(sln) ~= "solution") then
   			error("no active solution", 2)
   		end
@@ -1792,7 +1868,7 @@
 		api.scope.project = prj
 		  		
 		-- add an empty, global configuration to the project
-		configuration { }
+		configuration( cfgName )
 	
 		return prj
 	end
@@ -1801,7 +1877,7 @@
 --  Global container for configurations, applied to all solutions
 --
 	function api.global()
-		local c = api.solution('_GLOBAL_CONTAINER')
+		local c = api.solution('_GLOBAL')
 		globalContainer.solution = c
 	end
 
@@ -1817,8 +1893,11 @@
 			end
 		end
 		
+		-- Check for invalid names
+		api.checkName(name)
+		
 		local sln
-		if name == '_GLOBAL_CONTAINER' then	
+		if name == '_GLOBAL' then	
 			sln = globalContainer.solution
 		else
 			sln = premake.solution.get(name)
@@ -1827,7 +1906,9 @@
 		api.namespace('/')
 		if (not sln) then
 			sln = premake.solution.new(name)
-			io.slnScope[_CWD] = sln
+			if ptype(sln) ~= 'global' then
+				io.slnScope[_CWD] = sln
+			end
 		end
 
 		premake.CurrentContainer = sln
@@ -1840,7 +1921,7 @@
 		api.scope.project = nil
 		
 		-- set the new namespace
-		if name ~= '_GLOBAL_CONTAINER' then	
+		if name ~= '_GLOBAL' then	
 			api.namespace(name..'/')
 		else
 			api.namespace('/')
@@ -2008,6 +2089,7 @@
 	-- "export" explicitly lists which projects are included in a solution, and gives it an alias
 	function api.export(aliasName, fullProjectName)
 		local sln = api.scope.solution
+		local createAlias = true
 		if not sln then
 			error("Can't export, no active solution to export to", 2)
 		end
@@ -2015,7 +2097,8 @@
 			if not api.scope.project then
 				error("Can't use export() with no parameters, no active project", 2)
 			end
-			aliasName = api.scope.project.fullname
+			createAlias = false
+			aliasName = api.scope.project.shortname
 		end
 		if type(aliasName) ~= 'string' then
 			error("export expected string parameter, found "..type(aliasName), 2)
@@ -2025,14 +2108,14 @@
 			aliasName = sln.name .. '/' ..aliasName
 		end
 		if fullProjectName == nil then
-			fullProjectName = aliasName
+			fullProjectName = api.scope.project.fullname
 		end
 		if not fullProjectName:contains('/') then
 			fullProjectName = sln.name .. '/' ..fullProjectName
 		end
 		
 		-- set up alias
-		if fullProjectName ~= aliasName then
+		if createAlias and fullProjectName ~= aliasName then
 			targets.aliases[aliasName] = fullProjectName
 		end
 		
@@ -2043,7 +2126,7 @@
 		
 			-- solution's usage requirements include exported projects
 			usage(sln.name..'/'..'exports')
-				uses(aliasName)
+				uses(fullProjectName)
 		api.scopepop()
 	end
 
@@ -2079,27 +2162,42 @@
 --
 -- Example usage :
 --  Specify the target directory
---  releasedir { name = "bin", path = "/usr/bin", perms = "755" }
+--  releasedir { root_usr_bin = "/usr/bin", bin = "release/bin" }
 
 -- Specify the files to release
 --  release {
 --   name = "MyRelease",
---   bin = "file-to-put-in-bin-dir.ext someProject",
---   rootBin = { "putInUsrBin", perms = 755 },
+--   root_usr_bin = {"file-to-put-in-/usr/bin.ext someProject", perms = "755" },
+--   bin = "file-to-put-in-$root/release/bin.ext",
 --   conf = "someConf.conf"
 --  }
 
 -- or
---  release("MyRelease", "projA projB")	 -- default output to bin
+--  release("MyRelease", "projA projB")	 -- default output to destination label "bin"
 
 -- or keep the directory structure - output dump.pl to releaseDir/scripts/dump.pl
 --  release { 
 --		name = "prjA-scripts", 
 --		bin = { 
---			"$root/prjA/scripts/dump.pl", 
---			rootdir='$root/prjA' 
+--			"$root/prjA/scripts/dump.pl*", 
 --		} 
 --	} 
+
+-- or decide where to put the target when you know what it is
+-- releasedir { 
+--   auto = function(rel, dest, file, isDependency)
+--     local ext = path.getextension(file)
+--     if file:find("%.so") or ext:startswith(".a") then
+--       return "lib"
+--     elseif ext == "" or ext == ".exe" then
+--       return "bin"
+--     elseif ext:startswith(".h") then
+--	     return "include"
+--     end
+--   return "etc"
+--   end 
+-- } 
+--
 --*************************************************************************************
 
 function api.release(t, t2)
@@ -2144,8 +2242,9 @@ function api.release(t, t2)
 			if type(v) == 'string' then src.sources = v:split(' ') 
 			elseif type(v) == 'table' then
 				for k,v in pairs(v) do
+					if v:contains(" ") then v = v:split(' ') end
 					if type(k) == 'number' then
-						table.insert( src.sources, v )
+						table.insertflat( src.sources, v )
 					else
 						src[k] = v
 					end
@@ -2206,7 +2305,7 @@ function api.buildvariant(variantName)
 	end
 
 	-- everything in the variant block applies to both this project & its usage requirements
-	if ptype(active) ~= 'globalcontainer' then
+	if ptype(active) ~= 'global' then
 		uses(active.name)
 	end
 	usage(active.name)

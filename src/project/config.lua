@@ -119,15 +119,24 @@
 -- Doesn't bake per se, just fills in some calculated values.
 --
 
-	function config.bake(prj, filter)
+	function config.bake(prjOrSln, filter)
 		
-		local cfg = keyedblocks.getconfig(prj, filter, nil, {})
+		local cfg = keyedblocks.getconfig(prjOrSln, filter, nil, {})
+		local prj, sln
+		
+		if ptype(prjOrSln) == 'solution' then
+			sln = prjOrSln
+			prj = project.getUsageProject(prjOrSln.name)
+		else
+			prj = prjOrSln
+			sln = prj.solution
+		end
 
 		cfg.buildcfg = cfg.buildcfg or filter.buildcfg
 		cfg.platform = cfg.platform or filter.platform
 		cfg.system = cfg.system or filter.system
 		cfg.architecture = cfg.architecture or filter.architecture
-		cfg.solution = prj.solution
+		cfg.solution = sln
 		cfg.project = prj
 		cfg.isUsage = prj.isUsage
 		cfg.flags = cfg.flags or {}
@@ -155,7 +164,7 @@
 		end
 		
 		-- Remove any libraries in linkAsStatic that have also been defined in linkAsShared
-		oven.removefromfield(cfg.linkAsStatic, cfg.linkAsShared) 
+		oven.removefromfield(cfg.linkAsStatic, cfg.linkAsShared, "linkAsStatic") 
 					
 		ptypeSet( cfg, 'config' )
 
@@ -188,7 +197,7 @@
 			cfg.targetdir = defaultTargetDir
 		end
 
-		if cfg.project and cfg.kind and cfg.kind ~= 'None' then
+		if (not cfg.isUsage) and cfg.kind and cfg.kind ~= 'None' then
 			cfg.buildtarget = config.gettargetinfo(cfg)
 			oven.expandtokens(cfg, nil, nil, "buildtarget", true)
 			-- remove redundant slashes, eg. a//b
@@ -208,8 +217,8 @@
 		-- Remove self references
 		-- This can happen if a library "uses" itself
 		if cfg.buildtarget and cfg.buildtarget.abspath then
-			oven.removefromfield( cfg.linkAsShared, { cfg.buildtarget.abspath } )
-			oven.removefromfield( cfg.linkAsStatic, { cfg.buildtarget.abspath } )
+			oven.removefromfield( cfg.linkAsShared, { cfg.buildtarget.abspath }, "linkAsShared" )
+			oven.removefromfield( cfg.linkAsStatic, { cfg.buildtarget.abspath }, "linkAsStatic" )
 		end		
 
 		return cfg
@@ -542,8 +551,10 @@
 -- Register a key/value pair, eg. buildcfg=Debug
 --
 	config.cfgValues = {}
+	config.cfgKeys = {}
 	function config.registerkey(cfgKey, cfgValues, isPropagated)
 		if type(cfgValues) == 'string' then cfgValues = { cfgValues } end
+		cfgKey = cfgKey:lower()
 		
 		for _,v in ipairs(cfgValues) do
 			if type(v) == 'table' then 
@@ -557,6 +568,10 @@
 					isPropagated = isPropagated,				
 				}
 				config.cfgValues[vlower] = config.cfgValues[v]
+				
+				config.cfgKeys[cfgKey] = config.cfgKeys[cfgKey] or {}
+				config.cfgKeys[cfgKey].key = cfgKey
+				config.cfgKeys[cfgKey].isPropagated = isPropagated
 			end
 		end
 	end
@@ -597,8 +612,13 @@
 	function config.getBuildVariant(filter)
 		local rv = {}
 		for k,v in pairs(filter) do
-			if (config.cfgValues[v] or {}).isPropagated then
-				rv[k] = v
+			local keyword = config.cfgKeys[k] or config.cfgValues[v]
+			if keyword and keyword.isPropagated then
+				if type(k) == 'number' then
+					rv[k] = v
+				elseif type(k) == 'string' and keyword.key == k:lower() then
+					rv[k] = v
+				end
 			end
 		end
 		return rv			

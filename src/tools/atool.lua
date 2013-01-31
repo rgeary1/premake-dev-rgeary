@@ -40,7 +40,7 @@ atool.binaryFullpath = nil
 atool.fixedFlags = nil
 
 -- Order of arguments in the command line. Arguments not specified in this list are appended (optional)
-atool.argumentOrder = { 'fixedFlags', 'output', 'sysflags', 'cfgflags' }
+atool.argumentOrder = { 'fixedFlags', 'output', 'sysflags', 'cfgflags', 'input', 'linkAsStatic' }
 
 -- Mapping from Premake 'flags' to compiler flags
 atool.flagMap = {}
@@ -133,7 +133,7 @@ function atool:decorateInputs(cfg, outputVar, inputVar, previousResult)
 			if self.isCompiler and cfg.compilerwrapper then
 				-- Insert or append original command
 				wrapper = cfg.compilerwrapper
-			elseif self.isLinker and cfg.linkerwrapper then
+			elseif self.toolName == 'link' and cfg.linkerwrapper then
 				wrapper = cfg.linkerwrapper
 			end
 
@@ -158,6 +158,11 @@ function atool:decorateInputs(cfg, outputVar, inputVar, previousResult)
 			local d = self:decorateInput(category, inputList, cfg, true)
 			rv[category] = d
 		end
+	end
+	
+	-- ugly, need to add proper support for linker groups
+	if (not _OPTIONS['disable-linker-groups']) and (not cfg.linkAsStatic) then
+		rv.linkAsStatic = ' -Wl,--end-group'
 	end
 
 	if self.getDescription then
@@ -363,7 +368,7 @@ function premake.tools.newtool(toolDef)
 	if t.isCompiler then
 		table.insert( extraArgs, 'buildoptions' )
 	end
-	if t.isLinker then
+	if t.toolName == 'link' then
 		table.insert( extraArgs, 'ldflags' )
 	end
 
@@ -376,7 +381,7 @@ function premake.tools.newtool(toolDef)
 				table.insert(t.decorateArgs, argName)
 			end
 		else
-			printf("Warning : Could not find a decorator for argument '%s' listed in argumentOrder for tool %s", argName, t.toolName)
+			--printf("Warning : Could not find a decorator for argument '%s' listed in argumentOrder for tool %s", argName, t.toolName)
 		end
 	end
 	-- Then add any others
@@ -398,7 +403,7 @@ end
 
 function atool.decorateStaticLibList(list, cfg)
 	if not list or #list == 0 then
-		return ''
+		return iif( _OPTIONS['disable-linker-groups'], "", ' -Wl,--end-group' )
 	else
 		local s = { '-Wl,-Bstatic ' }
 		local binaryDir = cfg.buildtarget.directory
@@ -412,6 +417,9 @@ function atool.decorateStaticLibList(list, cfg)
 			end
 			s[#s+1] = ' '
 		end
+		if not _OPTIONS['disable-linker-groups'] then
+			s[#s+1] = ' -Wl,--end-group'
+		end
 		return table.concat(s)
 	end
 end
@@ -421,29 +429,33 @@ function atool.decorateSharedLibList(list, cfg)
 		return ''
 	else
 		local s = { '-Wl,-Bdynamic ' }
-		local binaryDir = cfg.buildtarget.directory
+		local rpaths = {}
 		for _,lib in ipairs(list) do
 			if path.containsSlash(lib) then
+			
 				local dir = path.getdirectory(lib)
 				local libName = path.getname(lib)
-				if libName:startswith('lib') and libName:endswith('.so') then
-					libName = libName:sub(4,#libName-3)
-					
+				if libName:contains('.so') then
+					s[#s+1] = path.join(dir, libName)
+
 					-- add -lmylib
-					s[#s+1] = '-l'
-					s[#s+1] = libName
+					--s[#s+1] = ' '
+					--s[#s+1] = '-l:'
+					--s[#s+1] = libName
 					
 					-- add -Ldir
-					s[#s+1] = ' '
-					s[#s+1] = '-L'
-					s[#s+1] = dir
+					--s[#s+1] = ' '
+					--s[#s+1] = '-L'
+					--s[#s+1] = dir
 
 					-- add -Wl,-rpath=dir
-					local rpath = path.getrelative(binaryDir, dir)
-					s[#s+1] = ' '
-					s[#s+1] = "-Wl,-rpath='$ORIGIN/"
-					s[#s+1] = rpath
-					s[#s+1] = "'"
+					local finalRpath = atool.getRpath(dir, cfg)
+					if not rpaths[finalRpath] then
+						rpaths[dir] = dir
+						s[#s+1] = ' '
+						s[#s+1] = "-Wl,-rpath="
+						s[#s+1] = finalRpath
+					end
 				else
 					-- Target is a specific version of an .so
 					s[#s+1] = lib
@@ -465,20 +477,34 @@ function atool.decorateRPath(list, cfg)
 	local set = toSet(list)
 	for rpath,_ in pairs(set) do
 
-		-- rpath should either be absolute (relative to /)
-		--  or relative to the final binary location, specified $ORIGIN
-		local finalRpath
-		if rpath:startswith("/") then
-			finalRpath = path.getabsolute(rpath)
-		elseif rpath:startswith("$ORIGIN") then
-			finalRpath = "'"..rpath.."'"
-		else
-			finalRpath = "'$ORIGIN/"..path.getrelative(binaryDir, rpath).."'"
-		end
+		local finalRpath = atool.getRpath(rpath, cfg)
 		rv[#rv+1] = '-Wl,-rpath='..finalRpath
 
 	end
 	return table.concat(rv, " ")
+end
+
+function atool.getRpath(rpath, cfg)
+
+	-- rpath should either be absolute (relative to /)
+	--  or relative to the final binary location, specified $ORIGIN
+	local binaryDir = cfg.buildtarget.directory
+	
+	if rpath:startswith("$ORIGIN") then
+		return "'"..rpath.."'"
+	end
+		
+	rpath = path.getabsolute(rpath)
+	if rpath:startswith(path.getabsolute(cfg.objdir)) then
+		return rpath
+	else
+		local relPath = path.getrelative(binaryDir, rpath)
+		if not relPath:startswith("/") then
+			return "'$ORIGIN/"..relPath.."'"
+		else
+			return "'"..rpath.."'"
+		end
+	end
 end
 
 function atool.generateDepfileOutput(list, cfg)

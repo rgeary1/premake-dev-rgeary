@@ -87,24 +87,21 @@
 		end
 	end
 
-
 --
--- Validate a list of user supplied key/value pairs against the list of registered options.
+--  Populate _OPTIONS with key=value pairs after resolving aliases
 --
--- @returns
----   True if the list of pairs are valid, false and an error message otherwise.
---
-
-	function premake.option.validate()
+	function premake.option.refresh()
 		local newOptions = {}
 		local opts = _OPTIONS
+		local unrecognisedOptions = {}
 
 		for key, value in pairs(_OPTIONS) do
 			-- does this option exist
 			local opt = premake.option.get(key)
 			if key ~= '' then
 				if (not opt) then
-					return false, "invalid option '" .. key .. "'"
+					newOptions[key] = value
+					unrecognisedOptions[key] = value
 				end
 				-- also register lower case trigger
 				newOptions[key] = _OPTIONS[key]
@@ -114,7 +111,23 @@
 			end
 		end
 		_OPTIONS = newOptions
-		
+		return unrecognisedOptions
+	end
+
+--
+-- Validate a list of user supplied key/value pairs against the list of registered options.
+--
+-- @returns
+---   True if the list of pairs are valid, false and an error message otherwise.
+--
+
+	function premake.option.validate()
+		local unrecognisedOptions = premake.option.refresh()
+
+		if not table.isempty(unrecognisedOptions) then
+			return false, "invalid option '" .. getKeys(unrecognisedOptions) .. "'"
+		end
+				
 		for key, value in pairs(_OPTIONS) do
 			local opt = premake.option.get(key)
 			-- does it need a value?
