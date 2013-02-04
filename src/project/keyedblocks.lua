@@ -283,7 +283,7 @@ function keyedblocks.getfilter(obj, buildVariant)
 		origFilter = table.shallowcopy(filter)
 		table.insert(filterList, origFilter)
 		local usesconfig = keyedblocks.getconfig(obj, filter, "usesconfig", {})
-
+		
 		-- usesconfig adds/mutates the filter
 		if usesconfig then
 			local filter2 = {}

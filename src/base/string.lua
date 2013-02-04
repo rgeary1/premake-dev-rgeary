@@ -57,7 +57,7 @@
 				searchPos = pend+1
 			end
 		end
-		if #s >= copyFrom then
+		if #s >= copyFrom and copyFrom < #s then
 			table.insert(rv, s:sub(copyFrom))
 		end
 		cache[s] = rv

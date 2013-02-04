@@ -4,6 +4,7 @@
 -- Copyright (c) 2002-2012 Jason Perkins and the Premake project
 --
 
+path.systemDirs = {}
 
 --
 -- Appends a file extension to the path. Verifies that the extension
@@ -457,3 +458,31 @@ timer.stop(tmr)
 		end
 		return p:replace(repoRoot, "$root/")
 	end
+	
+--
+-- Declared system dirs. Releases and rpaths should references treat these as absolute & universally available
+--
+
+	function path.addSystemDir(dirs)
+		if type(dirs) == 'string' then dirs = { dirs } end
+		for _,dir in ipairs(dirs) do
+			dir = path.getabsolute(dir)
+			if not dir:endswith("/") then dir = dir.."/" end
+			
+			if not path.systemDirs[dir] then
+				path.systemDirs[dir] = dir
+				table.insert( path.systemDirs, dir )
+			end
+		end
+	end
+	
+	function path.isSystemDir(dir)
+		dir = path.getabsolute(dir)
+		for _,sysdir in ipairs(path.systemDirs) do
+			if dir:startswith(sysdir) then
+				return true
+			end
+		end
+		return false
+	end
+	

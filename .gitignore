@@ -30,6 +30,7 @@ Makefile
 
 *.ninja
 .ninja_log
+.null
 
 *.bbprojectsettings
 Scratchpad.txt

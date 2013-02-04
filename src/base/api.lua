@@ -264,7 +264,12 @@
 					end
 					
 					if type(k) == 'number' then
-						table.insert(useValue, tostring(v))
+						k = #useValue
+						v = tostring(v)
+						if v:contains("=") then
+							k = v:match("[^=]*"):lower()
+						end
+						useValue[k] = v
 					else
 						useValue[k:lower()] = k..'='..tostring(v)
 					end
@@ -1221,6 +1226,15 @@
 		usagePropagation = "WhenStaticLib",
 	}
 	
+	-- For the windows linker, pass a file to declare which functions to export
+--[[	api.register {
+		name = "linkerExportFile",
+		scope = "config",
+		kind = "file",
+		expandtokens = true,
+		isCaseSensitive = true,
+	}]]
+	
 	-- Wrap the linker tool with this command. The original compile command & flags will be
 	-- appended, or substituted in place of "$CMD" 
 	api.register {
@@ -1413,6 +1427,14 @@
 		isList = true,
 		expandtokens = true,
 		usagePropagation = "WhenSharedOrStaticLib",
+	}
+	
+	-- Optionally set the version of the shared library
+	-- This will be suffixed on to the filename,
+	api.register {
+		name = "soversion",
+		scope = "config",
+		kind = "string",
 	}
 	
 	-- list of all variants supported by the project
@@ -2153,6 +2175,7 @@
 			end
 			prjFullname = api.scope.project.fullname
 		end
+		--printf("Added \"%s\" to project set \"%s\"", prjFullname, prjSetName)
 		targets.prjNameToSet[prjFullname] = targets.prjNameToSet[prjFullname] or {}
 		targets.prjNameToSet[prjFullname][prjSetName] = prjSetName		 
 	end
@@ -2316,4 +2339,10 @@ end
 
 function api.usevariant(variantName)
 	useconfig(variantName)
+end
+
+	
+function api.defaultaction(actionName)
+	_ACTION = _ACTION or actionName
+	premake.defaultaction = actionName
 end

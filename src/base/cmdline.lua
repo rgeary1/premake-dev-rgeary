@@ -114,6 +114,7 @@
 		
 	newoption {
 		trigger		= "interactive",
+		value		= "[bare]",
 		description = "Interactive Lua shell with Premake loaded. Press Ctrl-C to exit.",
 		aliases		= { "i" },
 	}

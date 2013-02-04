@@ -22,6 +22,7 @@
 	releasedir		= api.releasedir
 	projectset		= api.projectset
 	alias			= api.alias
+	defaultaction	= api.defaultaction
 
 --
 -- Define some commonly used symbols, for future-proofing.

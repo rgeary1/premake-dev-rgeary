@@ -64,9 +64,11 @@ function ninja.generateSolution(sln, scope)
 			_p('')
 			first = false
 		end
-
-		local prjTargets = ninja.generateProject(prj, scope)
-		mergeTargets(slnPrjTargets, prjTargets)
+		
+		if targets.prjToBuild[prj.name] then
+			local prjTargets = ninja.generateProject(prj, scope)
+			mergeTargets(slnPrjTargets, prjTargets)
+		end
 	end
 
 	-- Also export any remaining dependent projects
@@ -295,6 +297,10 @@ local function makeShorterBuildVars(scope, inputs, weight, newVarPrefix)
 end
 
 function ninja.writeProjectTargets(prj, scope)
+
+	if not prj.isbaked then
+		return
+	end
 
 	local filesPerConfig = ninja.getInputFiles(prj)
 
@@ -690,19 +696,18 @@ function ninja.writeProjectTargets(prj, scope)
 	end -- for cfgs
 	timer.stop(tmr)
 
-	local defaultTarget = 'donothing'
+	local defaultTargets = {}
 
-	if (prj.configs or {})[defaultBuildName] then
-		local cfg = prj.configs[defaultBuildName]
-		defaultTarget = cfg.finalTargetN
+	for cfgName,cfg in pairs(prj.configs or {}) do
+		table.insert( defaultTargets, cfg.finalTargetN )  
 		if cfg.buildwhen ~= 'explicit' then
 			prjTargets[''] = { prjTargetName }
 		end
 	end
 	if not ninja.buildEdges[prjTargetName] then
 		_p('# Project build targets')
-		_p('build '..prjTargetName..': phony '..defaultTarget)
-		addBuildEdge(prjTargetName, defaultTarget)
+		_p('build '..prjTargetName..': phony '..table.concat(defaultTargets,' '))
+		addBuildEdge(prjTargetName, defaultTargets)
 	end
 	_p('')
 

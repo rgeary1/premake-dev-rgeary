@@ -486,24 +486,29 @@ end
 
 function atool.getRpath(rpath, cfg)
 
+	if (not cfg.buildtarget) or (not cfg.buildtarget.directory) then
+		return ''
+	end
+
 	-- rpath should either be absolute (relative to /)
 	--  or relative to the final binary location, specified $ORIGIN
-	local binaryDir = cfg.buildtarget.directory
+	local binaryDir = path.getabsolute(cfg.buildtarget.directory)
 	
 	if rpath:startswith("$ORIGIN") then
 		return "'"..rpath.."'"
 	end
+	
+	local builddir = _OPTIONS['targetdir'] or _OPTIONS['objdir'] 
 		
-	rpath = path.getabsolute(rpath)
-	if rpath:startswith(path.getabsolute(cfg.objdir)) then
-		return rpath
-	else
+	if rpath:startswith("/") then
+		return path.getabsolute(rpath)
+	elseif path.isSystemDir(rpath) then
+		return path.getabsolute(rpath)
+	elseif rpath:startswith("$root") or (builddir and rpath:startswith(builddir)) then
 		local relPath = path.getrelative(binaryDir, rpath)
-		if not relPath:startswith("/") then
-			return "'$ORIGIN/"..relPath.."'"
-		else
-			return "'"..rpath.."'"
-		end
+		return "'$ORIGIN/"..relPath.."'"
+	else
+		return "'"..rpath.."'"
 	end
 end
 

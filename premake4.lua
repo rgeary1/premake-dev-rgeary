@@ -19,6 +19,9 @@ newoption {
 	description = "Build Premake to use LuaJIT",
 }
 
+-- Include luasocket
+include "./lib"
+
 --
 -- Define the project. Put the release configuration first so it will be the
 -- default when folks build using the makefile. That way they don't have to 
@@ -61,6 +64,7 @@ newoption {
 			includedirs { "src/host/lua-5.1.4/src" }
 			defines     "_DEBUG"
 			flags       { "Symbols" }
+			uses "luasocket/debugger"
 			
 		configuration "Release"
 			includedirs { "src/host/lua-5.1.4/src" }

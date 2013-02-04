@@ -178,12 +178,13 @@
 		if not defaultcfg then
 			return nil
 		end
-		if _OPTIONS['define'] then
-			local define = _OPTIONS['define']
+		if #premake.usevariants > 0 then
 			local buildVariant = { 
 				buildcfg = defaultcfg,
-			 	[define] = define, 
 			}
+			for _,v in ipairs(premake.usevariants or {}) do
+				buildVariant[v] = v
+			end
 			defaultcfg = config.getBuildName(buildVariant)
 		end		
 		
@@ -403,6 +404,11 @@
 	
 	-- helper function
 	function project.getNameParts(name, namespace)
+		if name:startswith("/") then
+			name = name:sub(2)
+			namespace = "/"
+		end
+	
 		local shortname = name
 		namespace = namespace or '/'
 
@@ -933,7 +939,7 @@
 			return false
 		else
 			local prjset = targets.prjNameToSet[prj.fullname]
-			if not prjset then 
+			if not prjset then
 				return false 
 			end
 			return prjset[s]

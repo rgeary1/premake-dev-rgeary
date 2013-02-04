@@ -35,6 +35,9 @@
 	
 	premake.cache = {}
 	
+	-- for command line defined global variants
+	premake.usevariants = {}	
+	
 	premake.releases = {}
 	
 -- Global defualt settings, override this in the system script if necessary

@@ -44,7 +44,10 @@
 		
 		return true
 	end
-	
+
+	--
+	-- Must be in _premake_main as we need an error handler before we read the premake lua files
+	--
 	local _HandlingError = 0
 	function _ErrorHandler ( errobj )
 		if _HandlingError == 0 then
@@ -83,6 +86,9 @@
     	return false
 	end
 	
+	--
+	-- Must be in _premake_main as we need to attach before we read the premake lua files
+	--
 	debuggerIsAttached = false
 	function attachDebugger()
 	
@@ -176,27 +182,33 @@
 		-- Set up global container
 		global()
 		
+		premake.option.refresh()
+		
+		-- Run bare interactive mode
+		checkForInteractive('bare')
+		 
 		-- Enable quiet mode. In quiet mode, Print with printAlways 
 		if _OPTIONS['quiet'] then
 			print = function() end
 		end
 		
 		-- Add any command line define variants
+		premake.usevariants = (_OPTIONS['usevariant'] or ''):split(",")
 		if _OPTIONS['define'] then
 			local defines = _OPTIONS['define']:split(' ')
+			
 			for _,v in ipairs(defines) do
-				buildvariant(v)
+				local k = v:match("([^=]*)=") or v
+				table.insert(premake.usevariants, k)
+
+				buildvariant(k)
 					define(v)
 			end
 			configuration {}
 			
-			-- Add to usevariant
-			if _OPTIONS['usevariant'] then
-				_OPTIONS['usevariant'] = _OPTIONS['usevariant'] .. ',' .. _OPTIONS['define']
-			else
-				_OPTIONS['usevariant'] = _OPTIONS['define']
-			end
-		end		
+			-- Add back to usevariant option
+			_OPTIONS['usevariant'] = table.concat(premake.usevariants,',')
+		end
 		
 		-- Search for a system-level premake4-system.lua file
 		local systemScript
@@ -249,9 +261,8 @@
 		if _OPTIONS['toolset'] then
 			toolset(_OPTIONS['toolset'])
 		end
-		if _OPTIONS['usevariant'] then
-			local variants = _OPTIONS['usevariant']:split(',')
-			usevariant(variants)
+		if #premake.usevariants > 0 then
+			usevariant(premake.usevariants)
 		end
 		
 		premake.option.refresh()
@@ -279,11 +290,11 @@
 		
 			
 		-- If no action was specified, show a short help message
-		
-		if (not _ACTION) or (_ACTION == '') then
+		if (not _OPTIONS.interactive) and ((_ACTION or '') == '') then
 			print(shorthelp)
 			return 1
 		end
+
 
 		-- Refetch action as file script may have altered it		
 		action = premake.action.current()
@@ -305,13 +316,7 @@
 			error("Error: " .. err, 0) 
 		end
 		
-
-		-- Run interactive mode
-		if _OPTIONS.interactive then
-			print("Premake interactive shell. Press Ctrl-C to exit.")
-			debug.dotty()
-			return 0
-		end
+		checkForInteractive()
 		
 		-- If there wasn't a project script I've got to bail now
 		if (not os.isfile(fname) and not ishelp) then
@@ -370,7 +375,23 @@
 
 	end
 	
-	function defaultaction(actionName)
-		_ACTION = _ACTION or actionName
-		premake.defaultaction = actionName
+	function checkForInteractive(filter)
+		filter = filter or ''
+		
+		-- Run interactive mode
+		if _OPTIONS.interactive == filter then
+			local hasFiles = false
+			for _,v in ipairs(_ARGS) do
+				if os.isfile(v) then
+					dofile(v)
+					hasFiles = true
+				end
+			end
+			if not hasFiles then
+				print("Premake interactive shell. Press Ctrl-C to exit.")
+				debug.dotty()
+			end
+			os.exit()
+		end
+
 	end

@@ -22,6 +22,11 @@
 	targets.prjNameToSet = {}	-- prjNameToSet[prjFullname] = set of projectsets containing prj
 	targets.dirToPrjs = {}		-- dirToPrjs[fullpath] = list of prjs
 	targets.releasedir = {}
+	
+local function matchdir(prjSln) 
+	return true 
+end
+	
 --
 -- Apply any command line target filters
 --
@@ -48,7 +53,18 @@
 			action.filterTargets()
 			
 		else
-		
+
+			if _OPTIONS['defaultbuilddir'] then
+				local dir = path.getabsolute(_OPTIONS['defaultbuilddir'])
+				local dirS = dir..'/'
+				matchdir = function(prjSln)
+					if prjSln.basedir == dir or prjSln.basedir:startswith(dirS) then
+						return true
+					end
+					return false
+				end
+			end
+					
 			-- Read command line args for specified targets
 			for _,v in ipairs(_ARGS) do
 				if v:endswith('/') then v = v:sub(1,#v-1) end
@@ -64,18 +80,6 @@
 			if table.isempty(targets.prjToBuild) and table.isempty(targets.slnToBuild) then
 				
 				-- Build default premake file projects
-				local function matchdir(prjSln) return true end
-				
-				if _OPTIONS['defaultbuilddir'] then
-					local dir = path.getabsolute(_OPTIONS['defaultbuilddir'])
-					local dirS = dir..'/'
-					matchdir = function(prjSln)
-						if prjSln.basedir == dir or prjSln.basedir:startswith(dirS) then
-							return true
-						end
-						return false
-					end
-				end
 				
 				local foundSln = false
 				for _,sln in pairs(targets.solution) do
@@ -86,14 +90,16 @@
 					end
 				end
 				for _,prj in pairs(targets.allReal) do
-					if (not targets.prjToBuild[prj.name]) and matchdir(prj) 
-					then
+					if (not targets.prjToBuild[prj.name]) and matchdir(prj) then
+
+						-- keep track of what is visible, for the error message
 						local prjSets = targets.prjNameToSet[prj.fullname] or toSet({ 'all' })
 						for prjSetName,_ in pairs(prjSets) do
 						    visiblePrjsBySet[prjSetName] = visiblePrjsBySet[prjSetName] or {}
 							table.insert( visiblePrjsBySet[prjSetName], prj.name )
 						end
 						
+						-- add the project to the build
 						if project.inProjectSet(prj, targets.includeProjectSets) then
 							if not foundSln then
 								printDebug("Build Project : "..prj.name)
@@ -109,7 +115,11 @@
 				globalContainer.onNoProjects(visiblePrjsBySet)
 				os.exit(1)
 			end
-		end		
+		end
+		
+		--printDebug("targets.requested : "..table.concat(getKeys(targets.requested), ' '))		
+		--printDebug("targets.slnToBuild : "..table.concat(getKeys(targets.slnToBuild), ' '))		
+		printDebug("targets.prjToBuild : "..table.concat(getKeys(targets.prjToBuild), ' '))		
 	end
 	
 	function globalContainer.onNoProjects(visiblePrjsBySet)
@@ -162,12 +172,27 @@
 			found = true
 		end
 
+		if not found and _OPTIONS['defaultbuilddir'] then
+			-- search for v as a project name under default build dir
+			for _,prj in Seq:new(targets.allReal):concat(targets.allUsages):each() do
+				if matchdir(prj) and prj.shortname == v then
+					found = true
+					-- Add project to the build
+					if not prj.isUsage then
+						targets.prjToBuild[prj.name] = prj
+					end
+					table.insert( targets.requested, prj )
+					print(" "..prj.name)
+				end
+			end
+		end
+
 		if not found then
 			-- search for v as a project name
 			for _,prj in Seq:new(targets.allReal):concat(targets.allUsages):each() do
 				if prj.shortname == v then
 					found = true
-					-- Add solution to the build
+					-- Add project to the build
 					if not prj.isUsage then
 						targets.prjToBuild[prj.name] = prj
 					end

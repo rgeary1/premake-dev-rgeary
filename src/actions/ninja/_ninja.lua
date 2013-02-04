@@ -123,7 +123,9 @@
 		if table.isempty(targets.requested) and table.isempty(targets.slnToBuild) then
 			ninja.generateDefaultBuild(_WORKING_DIR, globalScope, nil)
 		end
-		ninja.generateDefaultBuild(_WORKING_DIR, globalScope, nil, path.join(repoRoot, 'build_lastcmd.ninja'))
+		local buildlast = path.join( os.tmpdir(), "build_lastcmd.ninja" )
+		
+		ninja.generateDefaultBuild(_WORKING_DIR, globalScope, nil, buildlast)
 		
 		slnDone = {}
 	end
@@ -202,7 +204,7 @@
 				cmd = cmd .. ' -j'..tostring(_OPTIONS['threads'])
 			end
 			
-			cmd = cmd .. ' -f '..repoRoot..'/build_lastcmd.ninja'
+			cmd = cmd .. ' -f '..path.join( os.tmpdir(), 'build_lastcmd.ninja' )
 
 			print('Building with ninja...')
 			

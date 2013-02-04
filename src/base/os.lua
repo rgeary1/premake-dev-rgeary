@@ -156,7 +156,7 @@
 		local path = os.getenv("PATH") or ""
 		
 		if os.isfile(binname) then
-			return binname
+			return os.getcwd()
 		end
 		
 		if( hintPath ) then
@@ -524,3 +524,17 @@
 		return s.size
 	end
 	
+	local tempDirectory
+	function os.tmpdir()
+		if not tempDirectory then
+			if _OS == 'windows' then 
+				tempDirectory = path.join( os.getenv("TEMP"), os.getenv("USER") )
+			else
+				tempDirectory = path.join( "/tmp", os.getenv("USER") )
+			end
+			if not os.mkdir(tempDirectory) then
+				error("Could not create temporary dir : ", tempDirectory)
+			end
+		end
+		return tempDirectory
+	end

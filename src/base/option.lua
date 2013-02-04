@@ -102,12 +102,13 @@
 				if (not opt) then
 					newOptions[key] = value
 					unrecognisedOptions[key] = value
+				else
+					-- also register lower case trigger
+					newOptions[key] = _OPTIONS[key]
+					newOptions[key:lower()] = newOptions[key]
+					-- reregister .trigger in the table in case the option is an alias
+					newOptions[opt.trigger] = _OPTIONS[opt.trigger] or _OPTIONS[key]
 				end
-				-- also register lower case trigger
-				newOptions[key] = _OPTIONS[key]
-				newOptions[key:lower()] = newOptions[key]
-				-- reregister .trigger in the table in case the option is an alias
-				newOptions[opt.trigger] = _OPTIONS[opt.trigger] or _OPTIONS[key]
 			end
 		end
 		_OPTIONS = newOptions
@@ -125,7 +126,7 @@
 		local unrecognisedOptions = premake.option.refresh()
 
 		if not table.isempty(unrecognisedOptions) then
-			return false, "invalid option '" .. getKeys(unrecognisedOptions) .. "'"
+			return false, "invalid option '" .. table.concat(getKeys(unrecognisedOptions),",") .. "'"
 		end
 				
 		for key, value in pairs(_OPTIONS) do
