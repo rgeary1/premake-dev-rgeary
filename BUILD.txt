@@ -1,3 +1,9 @@
+NOTE ABOUT THIS FORK :
+
+  Run ./buildPremake.sh to build premake.
+
+----------------------------------------
+
 PREMAKE BUILD INSTRUCTIONS
 
  Premake is written in a mix of C and Lua. This mix enables many new 

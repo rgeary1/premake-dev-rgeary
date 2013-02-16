@@ -1,0 +1,15 @@
+#!/bin/bash
+
+contents=0
+if [[ "$1" == "-c" ]]; then
+	contents=1
+	shift 1
+fi
+dir=$1
+
+if [[ contents == 0 ]]; then
+	find $dir -type f | sort -u | md5sum | cut -d' ' -f1
+else
+	find $dir -type f | sort -u | xargs cat | md5sum | cut -d' ' -f1
+fi
+

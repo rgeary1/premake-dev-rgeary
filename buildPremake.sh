@@ -41,8 +41,9 @@ else
 fi
 premake="$premakeDir/bin/$OS_VERSION/Debug/premake4 --scripts=$premakeDir/src"
 systemScript="--systemScript=$premakeDir/premake-system.lua"
-hashFile=$premakeDir/hash.tmp
+hashFile=$premakeDir/hash.$OS_VERSION.tmp
 cd $premakeDir
+touch $premakeDir/src/host/scripts.c
 
 forceBuild=0
 threads="-j16"
@@ -86,7 +87,7 @@ sed -i "s,OS_VERSION,$OS_VERSION,g" $premakeDir/buildedges.ninja
 # Test if premake exists
 if [[ ! -f "$premakeDir/bin/$OS_VERSION/Release/premake4" || ! -f "$premakeDir/bin/$OS_VERSION/Debug/premake4" ]]; then
 	# Assume that ninja files in the depot are valid
-	ninja -q -C $premakeDir $threads
+	ninja -q -C $premakeDir $threads Debug
 	result=$?
 	if [[ $result != 0 ]]; then
 		echo "Error building Premake : ninja bootstrap of premake failed"

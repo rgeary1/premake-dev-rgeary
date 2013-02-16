@@ -27,6 +27,7 @@ Makefile
 *.workspace
 *.project
 *.tags
+*.tmp
 
 *.ninja
 .ninja_log

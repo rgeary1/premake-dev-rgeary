@@ -2,14 +2,24 @@
 
 #
 # This script should be run by the environ premake launcher script
+#  That script should set these environment variables :
 #
+# REPO_ROOT
+#   Root of the code base. Usually found by scanning upwards from the current dir to find some token root file or subdir.
+#
+# OS_VERSION
+#   Unique identifying string for operating system. Allows you to build Premake on an nfs drive in a heterogenous environment
+#
+# PREMAKE_LOCAL_DRIVE
+#   Set this to a path to a folder on the local hard drive. Premake will build to $PREMAKE_LOCAL_DRIVE/$USER/premakeBuild/<path/from/$HOME/to/src>
 
-# environment variables used :
+# Additional environment variables :
 # PREMAKE_SIMULTANEOUS_BUILDS=on | off			off by default
-# PREMAKE_DEBUG = 1													Always build with thedebug version of premake
-# PREMAKE_PRERUN														Command to run prior to building / running premake
+# PREMAKE_DEBUG = 1
+#   Always build with thedebug version of premake
+# PREMAKE_PRERUN
+#   Command to run prior to building / running premake
 
-# Unique identifying string for operating system. Allows you to build Premake on an nfs drive in a heterogenous environment
 if [[ "$OS_VERSION" == "" ]]; then
 	export OS_VERSION=$(uname -r | tr -d ' ')
 fi
@@ -23,11 +33,6 @@ if [[ "$IS_RUNNING_PREMAKE" != "" ]]; then
 	exit 0
 fi
 
-if [[ "$REPO_ROOT" == "" ]]; then
-	echo "REPO_ROOT not set"
-	exit 1
-fi
-SCRIPT_DIR=$REPO_ROOT/tje/scripts/build
 PREMAKE_DIR=$(readlink -f $(dirname $0) )
 debug=0
 rebuild=0
@@ -36,6 +41,7 @@ toolset=""
 args=()
 useLock=1
 objdir=""
+reporoot=""
 
 for i in $(seq 1 $#); do
 	arg=$1
@@ -49,11 +55,23 @@ for i in $(seq 1 $#); do
 	elif [[ "${arg:0:9}" == "--objdir=" ]]; then 
 		objdir="${arg:9}"
 		args+=("$arg")
+	elif [[ "${arg:0:11}" == "--reporoot=" ]]; then
+		reporoot="${arg:11}"
+		args+=("$arg")
 	else 
 		args+=("$arg")
 	fi
 done
 args+=($toolset)
+
+if [[ "$REPO_ROOT" == "" ]]; then
+	if [[ "$reporoot" == "" ]]; then
+		echo "No --reporoot and REPO_ROOT env not set"
+		exit 1
+	else
+		export REPO_ROOT="$reporoot"
+	fi
+fi
 
 if [[ "$PREMAKE_DEBUG" == "1" ]]; then
 	debug=1
@@ -69,7 +87,7 @@ if [[ "$PREMAKE_PRERUN" != "" ]]; then
 fi
 
 # Test if the hash of src folder has changed to see if we need to rebuild
-hash=$($SCRIPT_DIR/getfilehash -c $PREMAKE_DIR/src $PREMAKE_DIR/scripts)
+hash=$($PREMAKE_DIR/etc/getfilehash -c $PREMAKE_DIR/src $PREMAKE_DIR/scripts)
 hashFile=$PREMAKE_DIR/hash.tmp
 
 touch $hashFile
@@ -100,18 +118,22 @@ if [[ (($debug == 0) && ($rebuild == 1)) || ($rebuildDebug == 1) ]]; then
 			exit $result
 		fi
 	fi
-	hash=$($SCRIPT_DIR/getfilehash -c $PREMAKE_DIR/src $PREMAKE_DIR/scripts)
+	hash=$($PREMAKE_DIR/etc/getfilehash -c $PREMAKE_DIR/src $PREMAKE_DIR/scripts)
 	echo $hash > $hashFile
 
 	echo "Running Premake..."
 fi
 
 if [[ "$objdir" == "" ]]; then
-	export TMP_DIR="/spare/local/$USER/premakeBuild"
-	export PATH_FROM_REPO_ROOT=$(readlink -f $REPO_ROOT)
-	export PATH_FROM_REPO_ROOT=${PATH_FROM_REPO_ROOT/$HOME/}
-	mkdir -p $TMP_DIR/$PATH_FROM_REPO_ROOT 2>/dev/null
-	export LOCK_FILE="$TMP_DIR/$PATH_FROM_REPO_ROOT/.premake_lock"
+	if [[ "$PREMAKE_LOCAL_DRIVE" != "" ]]; then
+		export TMP_DIR="$PREMAKE_LOCAL_DRIVE/$USER/premakeBuild"
+		export PATH_FROM_REPO_ROOT=$(readlink -f $REPO_ROOT)
+		export PATH_FROM_REPO_ROOT=${PATH_FROM_REPO_ROOT/$HOME/}
+		mkdir -p $TMP_DIR/$PATH_FROM_REPO_ROOT 2>/dev/null
+		export LOCK_FILE="$TMP_DIR/$PATH_FROM_REPO_ROOT/.premake_lock"
+	else
+		export LOCK_FILE="$REPO_ROOT/.premake_lock"
+	fi
 else
 	lockDir=$(cd $REPO_ROOT && readlink -f $objdir)
 	if [[ -d $lockDir ]]; then

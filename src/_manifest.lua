@@ -106,7 +106,7 @@
 		"actions/print/_print.lua",
 		
 		-- Release action
-		"actions/release/_release.lua",
+		--"actions/release/_release.lua",
 
 		-- Ninja build action
 		"actions/ninja/_ninja.lua",
