@@ -19,6 +19,7 @@
 --
 
 -- isList 			true if it's an list of unique objects (unordered)
+-- isOrderedList	true if it's an list of ordered objects (Not implemented yet)
 -- allowDuplicates	(obsolete) Allow duplicate values, order dependent
 -- isKeyedTable 	Values are in a keyed table. Multiple tables with the same key will overwrite the value.
 
@@ -167,6 +168,13 @@
 				premake.fieldAliases[k] = v
 			end
 			field.aliases = aliases
+		end
+		
+		if field.expandDelimiter then
+			if type(field.expandDelimiter) ~= 'string' then
+				error("api.register : Invalid type for "..field.name..".expandDelimiter, expected string found "..type(field.expandDelimiter))
+			end
+			field.metatable = { listDelimiter = field.expandDelimiter }
 		end
 
 		-- make sure there is a handler available for this kind of value
@@ -406,7 +414,7 @@
 				end
 				
 				for _,v in ipairs(allowedValues) do
-					if valueL == v then
+					if valueL == v:lower() then
 						return v
 					end
 				end
@@ -474,7 +482,6 @@
 		-- store it, overwriting any existing value
 		target[name] = value
 	end
-
 
 --
 -- Set a new file value on an API field. Unlike paths, file value can
@@ -747,19 +754,22 @@
 	}
 
 	-- buildrule takes a table parameter with the keys :  
-	--	command[s] 		Command or commands to execute
-	--  description		Short description of the command, displayed during ninja build
+	--	commands 		Command or commands to execute
+	--  description		Short description of the command, displayed during ninja build.
+	--  name			(optional) Name of the buildrule, no spaces
 	--  outputs			(optional) Output files
 	--  language		(optional) Specify a shell language to execute the command in. eg. bash, python, etc.
 	--  stage			(default) 'postbuild' runs on the project target, 'link' runs on the compile output, 'compile' runs on the compile inputs
 	--  dependencies	(optional) additional files which the tool depends on, but does not take as an input
 	   
 	--   Use tokens to specify the input filename, eg. %{file.relpath}/%{file.name}
+	local validBuildStages = toSet({ 'prebuild', 'compile', 'link', 'postbuild' })
 	api.register {
 		name = "buildrule",
 		scope = "config",
 		kind = "object",
 		isList = true,
+		isKeyedTable = true,
 		expandtokens = true,
 		setter = function(target, name, field, value)
 			-- aliases
@@ -769,25 +779,39 @@
 			if type(br.commands) == 'string' then
 				br.commands = { br.commands }
 			end
-			br.outputs = br.outputs or br.output
-			br.dir = _CWD
-			local outputStr = Seq:new(br.outputs):select(function(p) 
-				if not p:startswith('%') then
-					return path.asRoot(path.getabsolute(p))
-				else
-					return p
-				end
-			end):mkstring()
-			br.absOutput = outputStr
-			for k,v in ipairs(br.dependencies or {}) do
-				br.dependencies[k] = path.getabsolute(v)
-			end
-			for k,v in ipairs(br.commands) do
-				br.commands[k] = v:replace('$out',outputStr)
+			
+			-- validation & setup
+			br.stage = br.stage or 'postbuild'
+			if not validBuildStages[br.stage] then
+				error("Invalid build stage \""..br.stage.."\"")
 			end
 			
-			target[name] = target[name] or {}
-			table.insert( target[name], br )
+			br.outputs = br.outputs or br.output
+			br.inputs = br.inputs or br.input
+			br.dir = _CWD
+
+			if type(br.dependencies) == 'string' then br.dependencies = { br.dependencies } end
+			--[[for k,v in ipairs(br.commands) do
+				br.commands[k] = v:replace('$out',outputStr)
+			end
+			]]
+			
+			-- insert in to cfg
+			-- split in to stages
+			local cfg = target
+			local stage = br.stage
+			cfg.buildrule = cfg.buildrule or {}
+			cfg.buildrule[stage] = cfg.buildrule[stage] or {}
+			
+			br.name = br.name or (stage..tostring(#cfg.buildrule[stage]))
+			if br.name and br.name:contains(" ") then
+				error("Build rule name cannot contain spaces : \""..br.name.."\"")
+			end
+
+			-- remove aliases
+			br.command = nil; br.cmd = nil; br.output = nil; br.input = nil
+			
+			table.insert( cfg.buildrule[stage], br ) 
 		end
 	}
 
@@ -967,6 +991,7 @@
 			Inline = { "Disabled", "ExplicitOnly", "Anything", },
 			-- InterProceduralOptimization, with 1, 2, 3 or 4 intermediate files 
 			IPO = { "None", "SingleFile", "MultiFile", "MultiFile2", "MultiFile3", "MultiFile4" },
+			Language = { "Assembler", "AnsiC", "C", "C++", "C++0x", "C99", },
 			"Managed",
 			"MFC",
 			Threading = {
@@ -1037,6 +1062,27 @@
 			"3.5",
 			"4.0"
 		},
+	}
+	
+	api.register {
+		name = "headerfiles",
+		scope = "project",
+		kind = "string",
+		isList = true,
+		expandtokens = true,
+		setter = function(target, name, field, value)
+			-- Workaround so we can resolve relative paths later. Add current path as a prefix.
+			if type(value) == 'string' then
+				value = _CWD..":"..value
+			elseif type(value) == 'table' then
+				local t2 = {}
+				for _,v in pairs(value) do	
+					t2[#t2+1] = _CWD..":"..v
+				end
+				value = t2
+			end
+			api.setlist(target, name, field, value)
+		end
 	}
 
 	api.register {
@@ -1303,31 +1349,34 @@
 		end
 	}
 
-	api.register {
-		name = "postbuildcommands",
-		scope = "config",
-		kind = "string",
-		isList = true,
-		expandtokens = true,
-		namealiases = { 'postbuildcommand' },
-	}
+	function postbuildcommands(cmd)
+		-- Convert in to build rule
+		buildrule {
+			stage = 'postbuild',
+			commands = cmd,
+		}	
+	end
 
-	api.register {
-		name = "prebuildcommands",
-		scope = "config",
-		kind = "string",
-		isList = true,
-		expandtokens = true,
-		namealiases = { 'prebuildcommand' },
-	}
+	function prebuildcommands(cmd)
+		-- Convert in to build rule
+		buildrule {
+			stage = 'prebuild',
+			commands = cmd,
+		}	
+	end
 
-	api.register {
-		name = "prelinkcommands",
-		scope = "config",
-		kind = "string",
-		isList = true,
-		expandtokens = true,
-	}
+	function prelinkcommands(cmd)
+		-- Convert in to build rule
+		buildrule {
+			stage = 'link',
+			commands = cmd,
+		}	
+	end
+	
+	-- aliases
+	_G.postbuildcommand = _G.postbuildcommands
+	_G.prebuildcommand 	= _G.prebuildcommands
+	_G.prelinkcommand 	= _G.prelinkcommands
 	
 	-- Project full-names consist of namespace/shortname, where namespace can contain further / characters
 	-- Projects created after this statement will have their name prefixed by this value.
@@ -1384,9 +1433,16 @@
 	-- Source Control Management
 	api.register {
 		name = "scmtype",
-		scope = "solution",
+		scope = "project",
 		kind = "string",
 		allowed = { "git", "hg", },
+	}
+
+	-- Root path of the source control management
+	api.register {
+		name = "scmroot",
+		scope = "project",
+		kind = "path",
 	}
 	
 	api.register {
@@ -1430,11 +1486,15 @@
 	}
 	
 	-- Optionally set the version of the shared library
-	-- This will be suffixed on to the filename,
+	-- This will be suffixed on to the filename extension, and a symbolic link created without the soversion
+	-- eg. soversion "1.0.%{cfg.shortname}"
+	--  create library : gcc -o libmyproj.so.1.0.debug --soname=libmyproj.so.1.0.debug ...
+	--  create symlink : ln -s libmyproj.so libmyproj.so.1.0.debug
 	api.register {
 		name = "soversion",
 		scope = "config",
 		kind = "string",
+		expandtokens = true,
 	}
 	
 	-- list of all variants supported by the project
@@ -1573,6 +1633,24 @@
 		isList = true,
 	}
 
+	--[[
+	function api.version(prjNameOrVer, version)
+		local prjName
+		if not version then
+			if not api.scope.project then
+				error("Can't use version \""..tostring(prjNameOrVer).."\", no active project to apply it to")
+			end
+			version = prjNameOrVer
+			prjName = api.scope.project.name
+		else
+			prjName = prjNameOrVer
+		end
+		
+		if not prjName:contains("/") then
+			error("Invalid argument \""..prjName.."\", must be the fully qualified project name")
+		end
+		targets.versions[prjName] = version
+	end]]
 
 
 -----------------------------------------------------------------------------
@@ -1813,7 +1891,7 @@
 		end
 					
 		if (ptype(sln) ~= "solution" and ptype(sln) ~= 'global') then
-			error("no active solution or global", 2)
+			error("no active solution or global for usage \""..name.."\"", 2)
 		end
 
   		-- if this is a new project, or the project in that slot doesn't have a usage, create it
@@ -1879,7 +1957,7 @@
   		-- identify the parent solution
   		local sln = premake.api.scope.solution
   		if (ptype(sln) ~= "solution") then
-  			error("no active solution", 2)
+  			error("no active solution for project \""..name.."\"", 2)
   		end
 
   		-- if this is a new project, create it

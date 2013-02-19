@@ -27,6 +27,9 @@
 #elif defined(__HAIKU__)
 #define PLATFORM_HAIKU    (1)
 #define PLATFORM_STRING   "haiku"
+#elif defined(__CYGWIN__)
+#define PLATFORM_CYGWIN   (1)
+#define PLATFORM_STRING   "cygwin"
 #else
 #define PLATFORM_WINDOWS  (1)
 #define PLATFORM_STRING   "windows"

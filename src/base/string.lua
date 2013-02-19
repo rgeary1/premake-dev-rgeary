@@ -112,7 +112,40 @@
 -- string.gsub without pattern matching
 --
 
+	function string.replace_test(str, searchStr, replaceStr)
+		local rnew = string.replace_new(str, searchStr, replaceStr)
+		local rold = string.replace_old(str, searchStr, replaceStr)
+		
+		if rnew ~= rold then	
+			error('"Replace mismatch, "'..str..'", "'..searchStr..'", "'..replaceStr..'"')
+		end
+		return rnew
+	end
+	
 	function string.replace(str, searchStr, replaceStr)
+		local i = 1
+		if not str then
+			return ''
+		end 
+		if #searchStr == 0 then
+			return str
+		end
+		local newstr = {}
+		while( i <= #str ) do
+			local findIdx = string.find(str, searchStr, i, true)
+			if findIdx then
+				newstr[#newstr+1] = str:sub(i,findIdx-1) 
+				newstr[#newstr+1] = replaceStr 
+				i = findIdx + #searchStr
+			else
+				break
+			end
+		end
+		newstr[#newstr+1] = str:sub(i, #str)
+		return table.concat(newstr)
+	end
+	
+	function string.replace_old(str, searchStr, replaceStr)
 		local i = 1
 		if not str then
 			return ''
@@ -131,7 +164,66 @@
 		end
 		return str
 	end
+		
+	--[[
+	function string.testReplace()
+		local count = 1000
+		local randomStrings = {}
+		
+		for i = 1,count do
+			local str = tostring(math.random(1000000,9999999))
+			if math.mod(i, 5) == 0 then	
+				table.insert(randomStrings, randomStrings[1])
+			else 
+				table.insert(randomStrings, str)
+			end
+		end
+		local searchStr = randomStrings[1] 
+		local bigStr = table.concat(randomStrings)
+		
+		local tmr = timer.start("Replace test")
+		for i = 1,1000 do
+			local newstr = string.replace(bigStr, searchStr, "blah")
+		end
+		timer.stop(tmr)
+	end
+	]]
 	
+--
+-- Replace whole word. Match only if followed by whitespace or EOF.
+--
+
+	function string.replaceword(str, searchStr, replaceStr)
+		local i = 1
+		if not str then
+			return ''
+		end 
+		if #searchStr == 0 then
+			return str
+		end
+		local newstr = {}
+		while( i <= #str ) do
+			local findIdx = string.find(str, searchStr, i, true)
+			if findIdx then
+				local last = findIdx + #searchStr
+				local c = str:sub(last,last)
+				if c == ' ' or c == '' or c == '\t' or c == '\n' or c == '\"' or c == "'" then
+					newstr[#newstr+1] = str:sub(i,findIdx-1) 
+					newstr[#newstr+1] = replaceStr
+				else
+					newstr[#newstr+1] = str:sub(i,last)
+				end
+				i = last
+			else
+				break
+			end
+		end
+		if i == 1 then
+			return str
+		end
+		newstr[#newstr+1] = str:sub(i, #str)
+		return table.concat(newstr)
+	end	
 --
 -- Remove repeated whitespace
 --

@@ -296,6 +296,18 @@ local function makeShorterBuildVars(scope, inputs, weight, newVarPrefix)
 	end
 end
 
+local function getProjectName(prj)
+	local prjTargetName = prj.name
+	if prjTargetName == prj.solution.name then
+		prjTargetName = prj.name..'.Project'
+	end
+	return prjTargetName
+end
+
+local function getCfgName(cfg)
+	return ninja.replaceSpecialChars(cfg.shortname)
+end
+
 function ninja.writeProjectTargets(prj, scope)
 
 	if not prj.isbaked then
@@ -307,10 +319,7 @@ function ninja.writeProjectTargets(prj, scope)
 	local cfgs = {}
 	local prjTargets = {}
 	local isCommandProject = prj.isCommandProject		-- a command project has only one configuration (& output) which is equivalent to all variants
-	local prjTargetName = prj.name
-	if prjTargetName == prj.solution.name then
-		prjTargetName = prj.name..'.Project'
-	end
+	local prjTargetName = getProjectName(prj)
 
 	local defaultBuildVariant = project.getDefaultBuildVariant(prj)
 	if not defaultBuildVariant then
@@ -359,7 +368,7 @@ function ninja.writeProjectTargets(prj, scope)
 
 	local tmr = timer.start('ninja.writeProjectTargets')
 
-	-- Compile
+	-- Build each config
 	for _,cfg in ipairs(cfgs) do
 		local toolsetName = cfg.toolset
 		local toolset = premake.tools[toolsetName]
@@ -381,7 +390,7 @@ function ninja.writeProjectTargets(prj, scope)
 		end
 
 		-- Replace disallowed special characters
-		local cfgname = ninja.replaceSpecialChars(cfg.shortname)
+		local cfgname = getCfgName(cfg)
 
 		local numFilesToCompile = #(filesInCfg['Compile'] or {})
 		local verboseComments = numFilesToCompile > 5
@@ -433,6 +442,9 @@ function ninja.writeProjectTargets(prj, scope)
 		end
 		local uniqueObjNameSet = {}
 		local finalTargetInputs = {}
+		
+		local extraTargets = ninja.writeBuildRule(cfg, 'prebuild', {}, scope)
+		table.insertflat(finalTargetInputs, extraTargets)
 
 		-- Compile source -> object files, for all files in the config
 		for fileName,fileCfg in pairs(filesInCfg['Compile'] or {}) do
@@ -440,7 +452,7 @@ function ninja.writeProjectTargets(prj, scope)
 				local sourceFileRel = path.getrelative(srcdirFull, fileName)
 				local outputFile
 
-				local extraTargets = ninja.writeBuildRule(cfg, 'compile', fileName, scope)
+				local extraTargets = ninja.writeBuildRule(cfg, 'compile', fileName, scope) or {}
 				if not isCommandProject then
 					-- SourceGen projects can have no compile dependencies, otherwise we end up in a loop
 					table.insertflat( extraTargets, cfg.compiledepends )
@@ -482,7 +494,7 @@ function ninja.writeProjectTargets(prj, scope)
 							local uid = string.createhashS(implicitDeps)
 							local varName, alreadyExists = scope:getName(implicitDeps, '$null/deps'..uid)
 							if not alreadyExists then
-								_p('build '..varName..': touch '.. implicitDeps)
+								_p('build '..varName..': phony2 '.. implicitDeps)
 							end
 							_p('')
 							implicitDeps = varName
@@ -537,31 +549,47 @@ function ninja.writeProjectTargets(prj, scope)
 		for _,fileFullpath in ipairs(implicitDepInputFiles) do
 			table.insert( implicitDeps, fileFullpath )
 		end
-		local libs = Seq:ipairs(cfg.linkAsStatic):iconcat(cfg.linkAsShared)
-		for _,lib in libs:each() do
+		for _,lib in ipairs(cfg.linkAsShared or {}) do
 			if path.containsSlash(lib) then
+				table.insert( implicitDeps, lib )		-- remove this when implicit deps on phony targets work
+				if targets.linkTargets[lib] then
+					-- Add the implicit dependency on the phony final target, to force any postbuild commands to run
+					local linkcfg = targets.linkTargets[lib] 
+					lib = getProjectName(linkcfg.project).."."..getCfgName(linkcfg)
+					table.insert( implicitDeps, lib )
+				end
+			end
+		end
+		for _,lib in ipairs(cfg.linkAsStatic or {}) do
+			if path.containsSlash(lib) then
+				table.insert( implicitDeps, lib )		-- remove this when implicit deps on phony targets work
+				if targets.linkTargets[lib] then
+					-- Add the implicit dependency on the phony final target, to force any postbuild commands to run
+					local linkcfg = targets.linkTargets[lib] 
+					lib = getProjectName(linkcfg.project).."."..getCfgName(linkcfg)
+				end
 				table.insert( implicitDeps, lib )
 			end
 		end
 
 		-- Link
 		local finalTargetN = prjTargetName.. '.' ..cfgname
+		local linkTargetN
 
 		if #allLinkInputs > 0 then
 
 			local extraTargets = ninja.writeBuildRule(cfg, 'link', allLinkInputs, scope)
-
 			table.insertflat(implicitDeps, extraTargets)
 
 			local linkToolRuleName
 
 			if not linkTool then
-				if #extraTargets == 0 then
+				if not extraTargets or #extraTargets == 0 then
 					if cfg.buildtarget and cfg.buildtarget.name then
 						local allInputs = table.concat(allLinkInputs, ' ')
 						_p('# Null linker')
 						local buildCmd = 'copyIfNewer '..allInputs
-						local linkTargetN = targetdirN..'/'..cfg.buildtarget.name
+						linkTargetN = targetdirN..'/'..cfg.buildtarget.name
 						if isCommandProject then
 							linkTargetN = prjTargetName
 						end
@@ -582,7 +610,6 @@ function ninja.writeProjectTargets(prj, scope)
 					_p('#++++++++++++++++++++++++++++++++')
 				end
 
-				local linkTargetN
 				if linkTool.getOutputFiles then
 					-- Use this if your tool outputs multiple files
 					local outputFiles = linkTool:getOutputFiles(cfg, allLinkInputs)
@@ -605,7 +632,7 @@ function ninja.writeProjectTargets(prj, scope)
 						local uid = string.createhashS(implicitDepStr)
 						local varName, alreadyExists = scope:getName(implicitDepStr, '$null/deps'..uid)
 						if not alreadyExists then
-							_p('build '..varName..': touch '.. implicitDepStr)
+							_p('build '..varName..': phony2 '.. implicitDepStr)
 						end
 						implicitDepStr = varName
 					end
@@ -622,6 +649,14 @@ function ninja.writeProjectTargets(prj, scope)
 				_p('')
 
 				addBuildEdge(linkTargetN, buildCmd, implicitDepStr, linkOverrides)
+				
+				if linkTool.postbuild then
+					local br = linkTool.postbuild(cfg)
+					if br then
+						local extraTargets = ninja.writeBuildRule2(cfg, br, linkTargetN, scope, {})
+						table.insertflat(finalTargetInputs, extraTargets)
+					end
+				end
 
 				table.insert(finalTargetInputs,linkTargetN)
 			end
@@ -629,47 +664,9 @@ function ninja.writeProjectTargets(prj, scope)
 		end
 
 		-- Post build commands
-		if cfg.postbuildcommands and #cfg.postbuildcommands > 0 then
-			cfg.stageNumber = cfg.stageNumber or {}
-			if verboseComments then
-				_p('# Post build commands')
-			end
-			local linkTargetN = targetdirN..'/'..cfg.buildtarget.name
-			local description = nil
-			local stage = 'postbuild'
-			for i,cmd in ipairs(cfg.postbuildcommands) do
-
-				if string.sub(cmd,1,1) == '#' then
-					description = string.sub(cmd,2)
-				else
-					-- Generate a unique name to reference this post build command
-					cfg.stageNumber[stage] = (cfg.stageNumber[stage] or 0) + 1
-					local postBuildTarget = finalTargetN..'.'..stage..tostring(cfg.stageNumber[stage])
-
-					repeat
-						local cmd2 = cmd
-						cmd = scope:getBest(cmd)
-					until #cmd2 == #cmd
-					local buildCmd = 'exec '..table.concat(finalTargetInputs, ' ')
-
-					addBuildEdge(postBuildTarget, buildCmd, nil, { cmd=cmd, description=description })
-
-					_p('build '..postBuildTarget..' : '..buildCmd)
-					_p(' cmd='..cmd)
-					if description then
-						_p(' description='..description)
-						description=nil
-					end
-					table.insert(finalTargetInputs, postBuildTarget)
-				end
-			end
-			_p('')
-		end
-
-		-- Post build commands v2
 		local postbuildTargets = ninja.writeBuildRule(cfg, 'postbuild', finalTargetInputs, scope)
 		table.insertflat(finalTargetInputs, postbuildTargets)
-
+		
 		-- Phony rule to build it all
 		if cfg.kind == 'Command' and #finalTargetInputs == 1 then
 			finalTargetN = finalTargetInputs[1]
@@ -680,6 +677,7 @@ function ninja.writeProjectTargets(prj, scope)
 			_p('build '..finalTargetN..': '..buildCmd)
 			_p('')
 		end
+		
 		cfg.finalTargetN = finalTargetN
 
 		-- For printBins
@@ -715,126 +713,153 @@ function ninja.writeProjectTargets(prj, scope)
 end
 
 function ninja.writeBuildRule(cfg, stage, inputs, scope)
-	if cfg.buildrule then
+	if cfg.buildrule and cfg.buildrule[stage] then
 		local finalTargetInputs = {}
-		-- split in to stages
-		if not cfg.buildruleSet then
-			cfg.buildruleSet = {}
-			cfg.stageNumber = cfg.stageNumber or {}
-
-			for _,b in ipairs(cfg.buildrule) do
-				local stage = b.stage or 'postbuild'
-				cfg.buildruleSet[stage] = cfg.buildrule[stage] or {}
-				table.insert(cfg.buildruleSet[stage], b)
-			end
+		for i,buildrule in ipairs(cfg.buildrule[stage] or {}) do
+			local buildTarget = ninja.writeBuildRule2(cfg, buildrule, inputs, scope, finalTargetInputs)
+			table.insert(finalTargetInputs, buildTarget)
 		end
-
-		if cfg.buildruleSet[stage] then
-			for i,buildrule in ipairs(cfg.buildruleSet[stage] or {}) do
-
-				-- Generate a unique name to reference this post build command
-				cfg.stageNumber[stage] = (cfg.stageNumber[stage] or 0) + 1
-				local buildTarget = cfg.project.name..'.'..cfg.buildcfg..'.'..stage..tostring(cfg.stageNumber[stage])
-				if cfg.kind == 'Command' then
-					buildTarget = cfg.project.name:match("[^/]*$")
-				end
-
-				local dir = scope:getBest(buildrule.dir)
-				local cmd = buildrule.commands or ''
-				if type(cmd) == 'table' then cmd = table.concat(cmd, '\n') end
-
-				if not buildrule.language then
-					-- raw ninja command, escape any unrecognised $ characters
-					local ignore = toSet({ '$in', '$out', '$builddir', '$root', "${in}", "${out}", "${root}", "${builddir}" })
-					cmd = cmd:gsub("%$[^$ /]*", function (v)
-						if ignore[v] then return v
-						else return "$"..v
-						end
-					end)
-					cmd = cmd:gsub('\n','; '):gsub(";;",";")
-				end
-
-				repeat
-					local cmd2 = cmd
-					cmd = scope:getBest(cmd)
-				until #cmd2 == #cmd
-				--cmd = 'cd '..dir..' && '.. cmd
-
-				local implicits = buildrule.dependencies or ''
-				if type(implicits) == 'table' then implicits = table.concat(implicits, ' ') end
-
-				if buildrule.language then
-					-- Write the command to a file, and execute it
-
-					-- replace $in with "$@"
-					if buildrule.language == 'bash' then
-						cmd = cmd:replace("$in ","$@")
-					end
-
-					local script = ninja.toAbsPath(cmd)
-					local scriptFilename = cfg.targetdir..'/'..buildTarget..'.'..buildrule.language
-					scriptFilename = ninja.toRelPath(scriptFilename)
-					local scriptFilenameFull = scriptFilename:replace("$root", repoRootPlain)
-					scriptFilenameFull = scriptFilenameFull:replace("${builddir}", ninja.builddir)
-
-					-- Test if contents are different before writing
-					local writeToFile = true
-					if os.isfile(scriptFilenameFull) then
-						local f = io.open(scriptFilenameFull, 'r')
-						local currentScript = f:read('*a')
-						io.close(f)
-						if currentScript == script then
-							writeToFile = false
-						end
-					end
-
-					if writeToFile then
-						local f = io.open(scriptFilenameFull, 'w+')
-						f:write(script)
-						io.close(f)
-					end
-
-					cmd = mkstring( { buildrule.language, scriptFilename, inputs })
-
-					-- Add the script to the implicits so it rebuilds if the command changes
-					implicits = implicits..' '..scriptFilename
-				end
-
-				if buildrule.absOutput and #buildrule.absOutput > 0 then
-					buildTarget = scope:getBest(buildrule.absOutput)
-				end
-
-				-- This fixes the issue where auto-generated header files placed in the source tree incorrectly get
-				--  multiple build edges for the same target output, despite the command being the same for each cfg
-				if not ninja.buildEdges[buildTarget] then
-					if type(inputs) == 'table' then inputs = table.concat(inputs, ' ') end
-
-					if not buildrule.language then
-						cmd = cmd:replace("$in", inputs)
-					end
-
-					if #implicits > 0 then
-						inputs = inputs .. ' | '..implicits
-					end
-
-					local buildCmd = 'exec '..inputs
-					_p('build '..buildTarget..' : ' .. buildCmd)
-					_p(' cmd='..cmd)
-
-					if buildrule.description then
-						_p(' description='..buildrule.description)
-					end
-
-					addBuildEdge(buildTarget, buildCmd, implicits, { cmd=cmd, description=buildrule.description })
-				end
-				table.insert(finalTargetInputs, buildTarget)
-
-			end
-			_p('')
-		end
+		_p('')
 		return finalTargetInputs
 	end
-	return {}
+	return nil
+end
+
+function ninja.writeBuildRule2(cfg, buildrule, inputs, scope, finalTargetInputs)
+	-- Generate a unique name to reference this post build command
+	local buildRuleName = cfg.project.name..'.'..cfg.buildcfg..'.'..buildrule.name
+	if cfg.kind == 'Command' then
+		buildRuleName = cfg.project.name:match("[^/]*$")
+	end
+	local buildTarget = buildRuleName
+
+	local dir
+	if buildrule.dir then
+		dir = scope:getBest(buildrule.dir)
+	end
+	local cmd = buildrule.commands or ''
+	if type(cmd) == 'table' then cmd = table.concat(cmd, '\n') end
+	
+	if not buildrule.language then
+		-- raw ninja command, escape any unrecognised $ characters
+		local ignore = toSet({ '$in', '$out', '$builddir', '$root', "${in}", "${out}", "${root}", "${builddir}" })
+		cmd = cmd:gsub("%$[^$ /]*", function (v)
+			if ignore[v] then return v
+			else return "$"..v
+			end
+		end)
+		cmd = cmd:gsub('\n','; '):gsub(";;",";")
+		if cmd:startswith(";") then
+			cmd = cmd:sub(2)
+		end
+	end
+	
+	-- get full path to outputs
+
+	local absOutputStr = ""
+	if buildrule.outputs then
+		local outputs = buildrule.outputs
+		if type(outputs) == 'string' then outputs = { outputs } end
+		local absOutputs = {}
+		for _,v in ipairs(outputs) do
+			v = path.getabsolute(v, buildrule.dir)
+			if not buildrule.language then
+				v = path.asRoot(v)
+			end
+			absOutputs[#absOutputs+1] = v 
+		end
+		absOutputStr = table.concat(absOutputs, ' ')
+		buildTarget = ninja.toRelPath(absOutputStr)
+	end
+	cmd = cmd:replaceword("$out",absOutputStr)
+
+	-- check for inputs override
+	if buildrule.inputs then
+		inputs = {}
+		if type(buildrule.inputs) == 'string' then buildrule.inputs = { buildrule.inputs } end
+		for _,v in ipairs(buildrule.inputs) do
+			v = path.getabsolute(v, buildrule.dir)
+			if not buildrule.language then
+				v = path.asRoot(v)
+			end
+			inputs[#inputs+1] = v
+		end 
+	end
+
+	local implicits = buildrule.dependencies or {}
+	if type(implicits) == 'string' then implicits = { implicits } end
+	for i,v in ipairs(implicits) do
+		implicits[i] = path.getabsolute(v, buildrule.dir)
+	end
+	implicits = table.concat(implicits, ' ')
+
+	if buildrule.language then
+		-- Write the command to a file, and execute it
+
+		-- replace $in with "$@"
+		if buildrule.language == 'bash' then
+			cmd = cmd:replaceword("$in","$@")
+		end
+
+		local script = ninja.toAbsPath(cmd)
+		local scriptFilename = cfg.targetdir..'/'..buildRuleName..'.'..buildrule.language
+		scriptFilename = ninja.toRelPath(scriptFilename)
+		local scriptFilenameFull = scriptFilename:replace("$root", repoRootPlain)
+		scriptFilenameFull = scriptFilenameFull:replace("${builddir}", ninja.builddir)
+
+		-- Test if contents are different before writing
+		local writeToFile = true
+		if os.isfile(scriptFilenameFull) then
+			local f = io.open(scriptFilenameFull, 'r')
+			local currentScript = f:read('*a')
+			io.close(f)
+			if currentScript == script then
+				writeToFile = false
+			end
+		end
+
+		if writeToFile then
+			local f = io.open(scriptFilenameFull, 'w+')
+			f:write(script)
+			io.close(f)
+		end
+
+		cmd = mkstring( { buildrule.language, scriptFilename, inputs })
+
+		-- Add the script to the implicits so it rebuilds if the command changes
+		implicits = implicits..' '..scriptFilename
+	end
+
+	repeat
+		local cmd2 = cmd
+		cmd = scope:getBest(cmd)
+	until #cmd2 == #cmd
+	--cmd = 'cd '..dir..' && '.. cmd
+
+	-- This fixes the issue where auto-generated header files placed in the source tree incorrectly get
+	--  multiple build edges for the same target output, despite the command being the same for each cfg
+	if not ninja.buildEdges[buildTarget] then
+		if type(inputs) == 'table' then inputs = table.concat(inputs, ' ') end
+
+		if not buildrule.language then
+			cmd = cmd:replace("$in", inputs)
+		end
+
+		if #implicits > 0 then
+			inputs = inputs .. ' | '..implicits
+		end
+
+		local buildCmd = 'exec '..inputs
+		_p('build '..buildTarget..' : ' .. buildCmd)
+		_p(' cmd='..cmd)
+
+		if buildrule.description then
+			_p(' description='..buildrule.description)
+		end
+
+		addBuildEdge(buildTarget, buildCmd, implicits, { cmd=cmd, description=buildrule.description })
+	end
+	return buildTarget
 end
 
 
@@ -894,7 +919,7 @@ function ninja.writeExecRule()
 	_p('rule copyIfNewer')
 	_p(' command=cp -u $in $out')
 	_p('')
-	_p('rule touch')
+	_p('rule phony2')
 	_p(' command=touch $out')
 	_p(' description=$out')
 	_p('')
@@ -910,6 +935,11 @@ function ninja.writeExecRule()
 	_p(" command=echo $lines | tr ' ' '\\n'")
 	_p(' description=$description')
 	_p('')
+	_p('rule deleteZeroSizedObjs')
+	_p(" command=find $builddir/* -size 0c -name '*.o' -type f -exec rm {} \\;")
+	_p(' description="Ctrl-C cleanup..."')
+	_p('')
+	_p('build __cleanup: deleteZeroSizedObjs')
 end
 
 

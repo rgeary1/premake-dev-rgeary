@@ -12,6 +12,7 @@
 		-- core files
 		"base/_declare.lua",
 		"base/timer.lua",
+		"base/immutable_table.lua",
 		"base/cache.lua",
 		"base/seq.lua",
 		"base/os.lua",

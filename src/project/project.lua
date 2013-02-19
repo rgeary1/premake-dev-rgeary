@@ -481,7 +481,7 @@
 		prj.fullname       = fullname
 		prj.shortname      = shortname
 		prj.basedir        = _CWD
-		prj.dirFromRoot    = _CWD:replace(repoRoot,"")
+		prj.dirFromRoot    = _CWD:replace(repoRootPlain,""):replace(repoRoot,"")
 		prj.script         = _SCRIPT
 		prj.uuid           = os.uuid()
 		prj.blocks         = { }

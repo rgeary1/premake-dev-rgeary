@@ -143,7 +143,8 @@
 		end
 		premake.isLoaded = true
 
-		path.setRepoRoot(_OPTIONS['reporoot'] or _WORKING_DIR)
+		local root = path.getabsolute(_OPTIONS['reporoot'] or '.', _WORKING_DIR)
+		path.setRepoRoot(root)
 
 		-- Start profiling
 		if (_OPTIONS['profile']) then
@@ -186,6 +187,12 @@
 		
 		-- Run bare interactive mode
 		checkForInteractive('bare')
+		
+		if _OPTIONS['debug'] then
+			for _,fn in ipairs(premake.selfcheck) do
+				fn()
+			end
+		end			
 		 
 		-- Enable quiet mode. In quiet mode, Print with printAlways 
 		if _OPTIONS['quiet'] then
@@ -221,9 +228,9 @@
 			end
 		end
 		if systemScript and os.isfile(systemScript) then
-			timer.start('Load system script')
+			local tmr = timer.start('Load system script')
 			dofile(systemScript, true)
-			timer.stop()
+			timer.stop(tmr)
 		end 
 		
 		-- Set up the environment for the chosen action early, so side-effects
@@ -268,12 +275,12 @@
 		premake.option.refresh()
 		
 		if (os.isfile(fname) and requirePremakeFile) then
-			timer.start('Load build script')
+			local tmr=timer.start('Load build script')
 			
 			-- load the build script
 			dofile(fname, true)
 			
-			timer.stop()
+			timer.stop(tmr)
 		end
 
 		-- Process special options
@@ -321,7 +328,7 @@
 		-- If there wasn't a project script I've got to bail now
 		if (not os.isfile(fname) and not ishelp) then
 			if #premakeFiles == 0 then
-				error("No Premake script ("..scriptfile..") found!", 2)
+				error("No Premake script ("..scriptfile..") found in ".._CWD, 2)
 			else
 				error("Multiple Premake scripts found : "..table.concat(premakeFiles, ' '), 2)
 			end
@@ -349,22 +356,22 @@
 		-- next-gen actions; this code will go away when everything has been
 		-- ported to the new API
 		if not ishelp then
-			timer.start('Bake configurations')
+			local tmr = timer.start('Bake configurations')
 			if not action.isnextgen then
 				error("Action \""..action.trigger.."\" not implemented")
 			else
 				premake5.globalContainer.bakeall()
 			end
-			timer.stop()
+			timer.stop(tmr)
 		end
 			
 		premake.spellCheckDisable(_G)
 
 		-- Hand over control to the action
 		printDebug("Running action '%s'...", action.trigger)
-		timer.start('Run action ' .. action.trigger)
+		local tmr = timer.start('Run action ' .. action.trigger)
 		premake.action.call(action.trigger)
-		timer.stop()
+		timer.stop(tmr)
 
 		timer.print()
 		
@@ -391,6 +398,7 @@
 				print("Premake interactive shell. Press Ctrl-C to exit.")
 				debug.dotty()
 			end
+			timer.print()
 			os.exit()
 		end
 

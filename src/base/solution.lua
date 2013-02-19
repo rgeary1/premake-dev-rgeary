@@ -44,7 +44,7 @@
 		sln.name           = name
 		sln.shortname      = shortname
 		sln.basedir        = _CWD
-		sln.dirFromRoot    = path.asRoot(sln.basedir):replace("$root/","")			
+		sln.dirFromRoot    = path.asRoot(sln.basedir):gsub("^$root[/]*","")			
 		sln.projects       = { }		-- real projects, not usages
 		sln.namespaces     = { name..'/' }
 		sln.script		   = _SCRIPT

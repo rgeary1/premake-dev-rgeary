@@ -79,7 +79,7 @@ function premake.tools.newtoolset(toolsetDef)
 	ptypeSet(t, 'toolset')
 	
 	if t.tools == nil then
-		if t.toolsetName ~= 'command' then
+		if t.toolsetName:lower() ~= 'notoolset' then
 			print('Warning : No tools defined for toolset "' .. t.toolsetName .. '"')
 		end
 		t.tools = {}
@@ -129,5 +129,5 @@ end
 --
 
 newtoolset {
-	toolsetName = 'command',
+	toolsetName = 'NoToolset',
 }

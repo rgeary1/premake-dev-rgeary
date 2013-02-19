@@ -117,6 +117,18 @@
 		return fcfg
 	end
 
+	local function expand(target, field, context)
+		local value = target[field]
+		if not value then
+			target[field] = nil
+		elseif type(value) == "string" then
+			target[field] = oven.expandvalue(value, context)
+		else
+			for k,v in pairs(value) do
+				expand(value, k, context)
+			end
+		end
+	end
 
 --
 -- Scan an object for expandable tokens, and expand them, in place.
@@ -155,7 +167,7 @@
 					return _cfg[key]
 				end	
 			})]]
-				
+			
 			-- build a context for the tokens to use
 			context = {
 				sln = cfg.solution,
@@ -166,38 +178,12 @@
 			}
 			_cfg._expandTokensContext = context
 		end
-		
-		local function expand(target, field)
-			local value = target[field]
-			if not value then
-				target[field] = nil
-			elseif type(value) == "string" then
-				target[field] = oven.expandvalue(value, context)
-			else
-				-- delayed expand, only expand if you need it. 
-				-- Makes a small perf increase, remove if it causes problems, eg. because you're unable to call ipairs(t)
-				if false and delayedExpand then
-					local proxyTable = {}
-					local mt = {}
-					mt.__index = function(self, key)
-						expand(value, key)
-						self[key] = value[key]
-						return value[key]
-					end
-					setmetatable(proxyTable, mt)
-					target[field] = proxyTable
-				else
-					for k,_ in pairs(value) do
-						expand(value, k)
-					end
-				end
-			end
-		end
+
 				
 		local target = filecfg or cfg
 		if fieldname then
 			if target[fieldname] then
-				expand(target, fieldname)
+				expand(target, fieldname, context)
 			end
 		else
 			for key, value in pairs(target) do
@@ -205,7 +191,7 @@
 				-- Premake's own API fields, and only those marked for it
 				local field = premake.fields[key]
 				if field ~= nil and field.expandtokens and field.scope == scope then
-					expand(target, key)
+					expand(target, key, context)
 				end
 			end
 		end
@@ -245,7 +231,9 @@ timer.stop(tmr)
 			return nil, "Invalid token '" .. token .. "'"
 		end
 		if type(result) == 'table' then
-			result = table.concat(result, ' ')
+			local mt = getmetatable(result) or {}
+			local listDelimiter = mt.listDelimiter or ' '
+			result = table.concat(result, listDelimiter)
 		end
 		context.cache[token] = result
 
@@ -258,7 +246,7 @@ timer.stop(tmr)
 		if not result then
 			local location = ((expandTokenContext.prj or {}).name or '')..':'
 				..((expandTokenContext.cfg or {}).shortname or '')
-			print("Token expansion error : "..err .. ' in ' .. token..' at '..location, 0)
+			printAlways("Token expansion error : "..err .. ' in ' .. token..' at '..location, 0)
 			os.exit(1)
 		end
 		return result
@@ -521,6 +509,15 @@ timer.stop(tmr)
 		else
 			target[fieldname] = table.deepcopy(value)
 		end
+		
+		if field.metatable then
+			local oldmt = getmetatable(target[fieldname]) 
+			if oldmt and oldmt ~= field.metatable then
+				print("Warning : Duplicate setmetatable call on "..fieldname)
+				print(" old metatable : "..mkstring(oldmt) )
+			end
+			setmetatable(target[fieldname], field.metatable)
+		end 
 	end
 	
 --

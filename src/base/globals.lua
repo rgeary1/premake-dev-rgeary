@@ -82,11 +82,9 @@
 			fname = path.getabsolute(fname)
 			dir = path.getdirectory(fname)
 
-			for _,v in ipairs(io.excludedirs) do
-				if fname:startswith(v) then
-					return false
-				end
-			end
+			if io.isExcludeDir(dir) then
+				return false
+			end			
 			
 			_SCRIPT = fname
 			
@@ -174,6 +172,7 @@
 	function include(fileOrDir)
 
 		local function includeFiles(files)
+			local alreadyIncluded
             if type(files) == 'string' then files = { files } end
 			for _,filename in ipairs(files) do
 				filename = path.getabsolute(filename)
@@ -181,16 +180,10 @@
 					io._includedFiles[filename] = true
 					dofile(filename)
 				else
-					if _CWD ~= repoRootPlain then
-						if helpMessageCount < 3 then
-							print("Including a directory manually is now unnecessary : include \""..path.getname(filename).."\" in ".._SCRIPT)
-						elseif helpMessageCount == 3 then
-							print(" etc...")
-						end
-						helpMessageCount = helpMessageCount + 1
-					end
+					alreadyIncluded = filename 
 				end
-			end			
+			end		
+			return alreadyIncluded	
 		end
 
 		-- if a directory, recursively load all premake scripts inside it
@@ -200,6 +193,7 @@
 		
 			local dir = fileOrDir
 			local realDir = os.getSymlinkTarget(fileOrDir)
+			local alreadyIncluded
 			
 			if realDir then
 				realDir = path.getabsolute(realDir)
@@ -211,10 +205,21 @@
 				-- else pretend it's a real directory 
 			end
 			
-			local files = os.matchfiles(dir..'/premake*.lua')
-			includeFiles(files)
-			local subdirFiles = os.matchfiles(dir..'/**/premake*.lua')
-			includeFiles(subdirFiles)
+			if not io.isExcludeDir(dir) then
+				local files = os.matchfiles(dir..'/premake*.lua')
+				alreadyIncluded = includeFiles(files)
+				local subdirFiles = os.matchfiles(dir..'/**/premake*.lua')
+				alreadyIncluded = includeFiles(subdirFiles) or alreadyIncluded
+			end
+
+			if alreadyIncluded then
+				if helpMessageCount < 3 then
+					print("Note : Including a directory manually is now unnecessary : duplicate include \""..path.getname(dir).."\" in "..alreadyIncluded)
+				elseif helpMessageCount == 3 then
+					print(" etc...")
+				end
+				helpMessageCount = helpMessageCount + 1
+			end
 			
 			premake.api.scopePop()
 			
@@ -224,7 +229,7 @@
 			-- but only load each file once
 			includeFiles(filename, true)
 		else
-			error('Could not find include "'..fileOrDir ..'" in file "'.._SCRIPT..'"')
+			error('Could not find premake include "'..fileOrDir ..'" in file "'.._SCRIPT..'"')
 		end
 	end
 	
@@ -238,6 +243,15 @@
 		end
 		d = path.getabsolute(d)
 		table.insert( io.excludedirs, d )
+	end
+	
+	function io.isExcludeDir(d)
+		for _,v in ipairs(io.excludedirs) do
+			if d:startswith(v) then
+				return true
+			end
+		end
+		return false	
 	end
 
 --

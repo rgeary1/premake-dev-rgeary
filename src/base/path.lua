@@ -37,7 +37,10 @@ path.systemDirs = {}
 	-- This is useful if you have a large code base containing multiple solutions  
 	function path.setRepoRoot(p)
 		if p then
-			p = path.getabsolute(p)
+			if not path.isabsolute(p) then
+				error("setRepoRoot(p) requires an absolute path to avoid ambiguity : \""..p.."\"")
+			end
+			p = os.readlink(p)
 			if not p:endswith('/') then
 				p = p..'/'
 			end
@@ -262,10 +265,18 @@ timer.stop(tmr)
 		
 		-- back up from dst to get to this common parent
 		local result = ""		
-		idx = src:find("/")
-		while (idx) do
-			result = result .. "../"
-			idx = src:find("/", idx + 1)
+		local i = 1
+		while (i < #src) do
+			local idx = src:find("/", i)
+			if idx == i then
+				-- double //, ignore
+				i = i + 1
+			elseif not idx then
+				break
+			else
+				result = result .. "../"
+				i = idx + 1
+			end
 		end
 
 		-- tack on the path down to the dst from here

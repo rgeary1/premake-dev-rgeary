@@ -11,6 +11,7 @@ enabled.totals = {}				-- { allTime, childTime, numCalls }
 enabled.startTime = {}
 enabled.stackName = {}
 enabled.stackChildTime = {}
+enabled.onPrintCallbacks = {}
 
 function timer.enable()
 	timer = enabled
@@ -43,7 +44,7 @@ function enabled.stop(name_, iters)
 	end
 	
 	local name = table.remove( enabled.stackName )
-	if name_ and name ~= name_ then
+	if name ~= name_ then
 		error('Mismatched timer.stop. Expected '..name..' got '.. (name_ or '(nil)'))
 	end
 	local startTime = table.remove( enabled.startTime )
@@ -80,11 +81,24 @@ function enabled.print(tmr)
 	if not tmr then
 		printf(sName.." : %.4f", 'Total', totalTime)
 	end
+	
+	for _,func in ipairs(enabled.onPrintCallbacks) do
+		func()
+	end
 end
+
+function enabled.onPrint(func)
+	if not enabled.onPrintCallbacks then
+		enabled.onPrintCallbacks[func] = func
+		table.insert( enabled.onPrintCallbacks, func)
+	end
+end
+
 
 function disabled.start(name) end
 function disabled.stop() end
 function disabled.print() end
+function disabled.onPrint(func) end
 
 function enabled.runTests()
 	local function test(name, func, args, prepareFunc)

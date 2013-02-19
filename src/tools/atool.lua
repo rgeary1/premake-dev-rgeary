@@ -406,7 +406,7 @@ function atool.decorateStaticLibList(list, cfg)
 		return iif( _OPTIONS['disable-linker-groups'], "", ' -Wl,--end-group' )
 	else
 		local s = { '-Wl,-Bstatic ' }
-		local binaryDir = cfg.buildtarget.directory
+		local binaryDir = cfg.linktarget.directory
 		for _,lib in ipairs(list) do
 			if path.containsSlash(lib) then
 				s[#s+1] = lib
@@ -473,7 +473,7 @@ end
 
 function atool.decorateRPath(list, cfg)
 	local rv = {}
-	local binaryDir = cfg.buildtarget.directory
+	local binaryDir = cfg.linktarget.directory
 	local set = toSet(list)
 	for rpath,_ in pairs(set) do
 
@@ -486,13 +486,13 @@ end
 
 function atool.getRpath(rpath, cfg)
 
-	if (not cfg.buildtarget) or (not cfg.buildtarget.directory) then
+	if (not cfg.linktarget) or (not cfg.linktarget.directory) then
 		return ''
 	end
 
 	-- rpath should either be absolute (relative to /)
 	--  or relative to the final binary location, specified $ORIGIN
-	local binaryDir = path.getabsolute(cfg.buildtarget.directory)
+	local binaryDir = path.getabsolute(cfg.linktarget.directory)
 	
 	if rpath:startswith("$ORIGIN") then
 		return "'"..rpath.."'"

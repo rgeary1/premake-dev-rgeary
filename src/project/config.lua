@@ -9,6 +9,7 @@
 	local oven = premake5.oven
 	local keyedblocks = premake.keyedblocks
 	local globalContainer = premake5.globalContainer
+	local targets = premake5.targets
 
 	local bvignoreSet = toSet({ 'buildcfg', 'platform' })
 	
@@ -65,8 +66,8 @@
 
 		-- To use a library project, you need to link to its target
 		--  Copy the build target from the real proj
-		if realCfg.buildtarget and realCfg.buildtarget.abspath then
-			local realTargetPath = realCfg.buildtarget.abspath
+		if realCfg.linktarget and realCfg.linktarget.abspath then
+			local realTargetPath = realCfg.linktarget.abspath
 			if realCfg.kind == 'SharedLib' then
 				-- link to the target as a shared library
 				oven.mergefield(usageKB, "linkAsShared", { realTargetPath })
@@ -206,9 +207,11 @@
 			end
 			
 			cfg.linktarget = config.getlinkinfo(cfg)
-			oven.expandtokens(cfg, nil, nil, "linktarget", true)
-			if (cfg.linktarget or {}).abspath then
-				cfg.linktarget.abspath = cfg.linktarget.abspath:replace("//","/") 
+			if cfg.linktarget ~= cfg.buildtarget then
+				oven.expandtokens(cfg, nil, nil, "linktarget", true)
+				if (cfg.linktarget or {}).abspath then
+					cfg.linktarget.abspath = cfg.linktarget.abspath:replace("//","/") 
+				end
 			end
 		end
 		
@@ -216,11 +219,14 @@
 		
 		-- Remove self references
 		-- This can happen if a library "uses" itself
-		if cfg.buildtarget and cfg.buildtarget.abspath then
-			oven.removefromfield( cfg.linkAsShared, { cfg.buildtarget.abspath }, "linkAsShared" )
-			oven.removefromfield( cfg.linkAsStatic, { cfg.buildtarget.abspath }, "linkAsStatic" )
-		end		
+		if cfg.linktarget and cfg.linktarget.abspath then
+			oven.removefromfield( cfg.linkAsShared, { cfg.linktarget.abspath }, "linkAsShared" )
+			oven.removefromfield( cfg.linkAsStatic, { cfg.linktarget.abspath }, "linkAsStatic" )
 
+			-- Store for later reference, so we can compute implicit dependencies from a link output path
+			targets.linkTargets[cfg.linktarget.abspath] = cfg
+		end
+		
 		return cfg
 				
 	end
@@ -274,6 +280,15 @@
 		prefix = cfg[field.."prefix"] or cfg.targetprefix or prefix
 		suffix = cfg[field.."suffix"] or cfg.targetsuffix or suffix
 		extension = cfg[field.."extension"] or extension
+		local soversion = cfg.soversion
+		
+		if soversion then
+			if cfg.system ~= premake.WINDOWS then
+				extension = extension .. "." .. soversion
+			else
+				extension = soversion .. "." .. extension
+			end
+		end
 
 		local info = {}
 		info.directory  = directory -- project.getrelative(cfg.project, directory)
@@ -291,6 +306,7 @@
 		info.bundlepath = path.join(info.directory, bundlepath)
 		info.prefix     = prefix
 		info.suffix     = suffix
+		info.soversion  = soversion
 		return info
 	end
 
@@ -393,6 +409,9 @@
 				kind = premake.STATICLIB
 				field = "implib"
 			end
+		elseif cfg.buildtarget then
+			-- saves some time
+			return cfg.buildtarget
 		end
 
 		return buildtargetinfo(cfg, kind, field)
@@ -556,22 +575,30 @@
 		if type(cfgValues) == 'string' then cfgValues = { cfgValues } end
 		cfgKey = cfgKey:lower()
 		
-		for _,v in ipairs(cfgValues) do
+		for k,v in pairs(cfgValues) do
 			if type(v) == 'table' then 
 				config.registerkey(cfgKey, v, isPropagated)
-			else 
+			else
+				local key = cfgKey
+				if type(k) == 'string' then key = k end
+				 
 				local vlower = v:lower()
+				if config.cfgValues[v] then
+					if config.cfgValues[v].key ~= key then
+						error( 'Configuration keyword "'..v..'" is already registered to key "'..config.cfgValues[v].key..'", can\'t register it to "'..key..'"', 3)
+					end
+				end
 				config.cfgValues[v] = {
 					v = v,
 					vlower = vlower,
-					key = cfgKey,
+					key = key,
 					isPropagated = isPropagated,				
 				}
 				config.cfgValues[vlower] = config.cfgValues[v]
 				
-				config.cfgKeys[cfgKey] = config.cfgKeys[cfgKey] or {}
-				config.cfgKeys[cfgKey].key = cfgKey
-				config.cfgKeys[cfgKey].isPropagated = isPropagated
+				config.cfgKeys[key] = config.cfgKeys[key] or {}
+				config.cfgKeys[key].key = key
+				config.cfgKeys[key].isPropagated = isPropagated
 			end
 		end
 	end

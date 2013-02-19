@@ -198,7 +198,7 @@ function keyedblocks.resolveUses(kb, obj)
 					if debug then
 						useProj, suggestions = keyedblocks.getUsage(useProjName, obj.namespaces)
 					end
-					print(errMsg)
+					printAlways(errMsg)
 					if _ACTION ~= 'print' then
 						os.exit(1)
 					end
@@ -207,6 +207,32 @@ function keyedblocks.resolveUses(kb, obj)
 			end
 		end
 	end
+end
+
+function keyedblocks.getDependencies(prjOrSln, deps, includeUses)
+	deps = deps or {}
+	local kb = prjOrSln.keyedblocks
+	if not kb then return {} end
+
+	if kb.__parent then
+		keyedblocks.getDependencies(kb.__parent, deps)
+	end
+	if kb.__uses then
+		for useProjName, p in pairs(kb.__uses or {}) do
+			deps[#deps+1] = p.prj
+			if includeUses then
+				keyedblocks.getDependencies(p.prj, deps)
+			end
+		end
+	end
+	for term,obj in pairs(kb.__config or {}) do
+		keyedblocks.getDependencies(obj, deps)
+	end
+	for filterStr,obj in pairs(kb.__filter or {}) do
+		keyedblocks.getDependencies(obj, deps)
+	end	
+	
+	return deps
 end
 
 function keyedblocks.getUsage(name, namespaces)
@@ -288,8 +314,7 @@ function keyedblocks.getfilter(obj, buildVariant)
 		if usesconfig then
 			local filter2 = {}
 			for k,v in Seq:new(filter):concat(usesconfig):each() do
-				-- .usesconfig & filter is of the form { debug, "threading=multi", }
-				-- ie. set the filter on the key, match blocks on the value
+				-- set the filter on the key, match blocks on the value
 				if type(k) ~= 'number' then
 					if k:contains('=') then
 						k = k:match("[^=]*"):lower()
@@ -347,10 +372,10 @@ function keyedblocks.getconfig(obj, filter, fieldName, dest)
 	local accessedBlocks = {}
 	local foundBlocks = {}
 	foundBlocks.cfgs = {}
-	-- Set of all separate configurationsC
+	-- Set of all separate configurations
 
 	local function findBlocks(kb)
-		
+	
 		if not kb or table.isempty(kb) then
 			return nil
 		elseif accessedBlocks[kb] then
@@ -637,7 +662,7 @@ end
 --
 -- Testing
 --
-
+--[[
 function keyedblocks.test()
 	
 	global()
@@ -676,3 +701,4 @@ function keyedblocks.test()
 	Print.print('kbR = ', xR)
 	print('')	
 end
+]]

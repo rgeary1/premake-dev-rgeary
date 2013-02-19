@@ -61,6 +61,8 @@
 								end
 							end
 						end
+					end
+					if not prj then
 						-- try to match the name
 						for _,p in pairs(targets.allUsage) do
 							if (not defaultBuildDir) or p.basedir:startswith(defaultBuildDir) then
@@ -70,6 +72,8 @@
 								end
 							end
 						end
+					end
+					if not prj then
 						-- match any part of the name
 						for _,p in pairs(targets.allReal) do
 							if (not defaultBuildDir) or p.basedir:startswith(defaultBuildDir) then

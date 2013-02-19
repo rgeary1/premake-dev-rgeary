@@ -9,7 +9,7 @@
 	premake = { }
 	premake5 = { }
 	premake.tools = { }
-
+	
 -- Top level namespace for abstract base class definitions 
 	premake.abstract = { }
 	
@@ -26,6 +26,8 @@
 	premake5.targets.allReal = {}
 	premake5.targets.releases = {}
 	premake5.targets.aliases = {}
+	premake5.targets.versions = {}
+	premake5.targets.linkTargets = {}
 
 	premake5.project = { }
 	premake5.oven = { }
@@ -42,6 +44,9 @@
 	
 -- Global defualt settings, override this in the system script if necessary
 	premake.clearActiveProjectOnNewFile = true
+	
+	-- Table of functions to run before reading the system script 
+	premake.selfcheck = {}
 	
 --
 -- For printing in quiet mode

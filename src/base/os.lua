@@ -233,13 +233,13 @@
 	}
 	local hostIs64bit 
 	function os.is64bit()
-		-- Call the native code implementation. If this returns true then
-		-- we're 64-bit, otherwise do more checking locally
-		if (os._is64bit()) then
-			return true
-		end
-		
 		if( hostIs64bit == nil ) then
+			-- Call the native code implementation. If this returns true then
+			-- we're 64-bit, otherwise do more checking locally
+			if (os._is64bit()) then
+				return true
+			end
+			
 			-- Identify the system
 			local arch
 			if _OS == "windows" then
@@ -306,7 +306,6 @@
 					end
 				end
 				os.matchdone(m)
-				timer.stop(tmr)
 				return
 			end
 			local wildcard = path.join(basedir, "*")
@@ -395,13 +394,18 @@
 --
 
 	function os.outputof(cmd)
-		local pipe = io.popen(cmd)
-		local result = pipe:read('*a')
-		pipe:close()
-		if result:endswith('\n') then
-			result = result:sub(1,#result-1)
+		if _OPTIONS['dryrun'] then
+			print( "Exec : "..cmd )
+			return ""
+		else
+			local pipe = io.popen(cmd)
+			local result = pipe:read('*a')
+			pipe:close()
+			if result:endswith('\n') then
+				result = result:sub(1,#result-1)
+			end
+			return result
 		end
-		return result
 	end
 
 
@@ -503,16 +507,19 @@
 		end				
 	end
 	
-	function os.copy(src, dest)
+	function os.copy(src, dest, onlyUpdate)
 		if _OS == 'windows' then
-			local cmd = 'copy /Y "'..src..'" "'..dest..'"'
+			local cmd = iif(onlyUpdate, "xcopy /y /d ", "copy /Y ")
+			cmd = cmd .. ' "'..src..'" "'..dest..'"'
 			return os.execute(cmd)
 		else
 			if src:contains(":") or dest:contains(":") then
-				local cmd = 'scp -q "'..src..'" "' ..dest..'"'
+				local flags = iif(onlyUpdate, "-azqu", "-azq")
+				local cmd = 'rsync '..flags..' "'..src..'" "' ..dest..'"'
 				return os.execute(cmd)
 			else
-				local cmd = 'cp --preserve -u "'..src..'" "' ..dest..'"'
+				local flags = iif(onlyUpdate, "-du", "-d")
+				local cmd = 'cp '..flags..' "'..src..'" "' ..dest..'"'
 				return os.execute(cmd)
 			end
 		end

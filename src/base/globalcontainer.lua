@@ -119,7 +119,7 @@ end
 		
 		--printDebug("targets.requested : "..table.concat(getKeys(targets.requested), ' '))		
 		--printDebug("targets.slnToBuild : "..table.concat(getKeys(targets.slnToBuild), ' '))		
-		printDebug("targets.prjToBuild : "..table.concat(getKeys(targets.prjToBuild), ' '))		
+		--printDebug("targets.prjToBuild : "..table.concat(getKeys(targets.prjToBuild), ' '))		
 	end
 	
 	function globalContainer.onNoProjects(visiblePrjsBySet)

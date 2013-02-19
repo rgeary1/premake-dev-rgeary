@@ -15,10 +15,6 @@ local icc_cc = newtool {
 	-- These are all for linux, windows flags are different
 	flagMap = {
 		AddPhonyHeaderDependency = "-MP",	 -- used by makefiles
-		AllowUndefinedSymbols = {
-			Yes = "-Wl,--undefined-symbols",
-			No = "-Wl,--no-undefined-symbols",
-		},
 		CreateDependencyFile = "-MMD",
 		CreateDependencyFileIncludeSystem = "-MD",
 		Inline = {
@@ -34,6 +30,14 @@ local icc_cc = newtool {
 			MultiFile2		= '-ipo2',		-- use -ipo2 or higher if the compiler/linker is running out of memory 			
 			MultiFile3		= '-ipo3',			
 			MultiFile4		= '-ipo4',			
+		},
+		Language = {
+			["Assembler"]	= "-x assembler",
+			["AnsiC"]		= "-x c -ansi",
+			["C"]			= "-x c",
+			["C++"]			= "-x c++",
+			["C++0x"]		= "-std=c++0x",
+			["C99"]			= "-std=c99",
 		},
 		EnableSSE2     		= "-msse2",
 		EnableSSE3     		= "-msse3",
@@ -158,6 +162,9 @@ local icc_link = newtool {
 	fixedFlags = iif( _OPTIONS['disable-linker-groups'], "", '-Wl,--start-group' ),
 	extensionsForLinking = { '.o', '.a', '.so' },		-- possible inputs in to the linker
 	flagMap = {
+		AllowUndefinedSymbols = {
+			No = "-Wl,--no-undefined",
+		},
 		Stdlib = {
 			Shared		= '-shared-libgcc -shared-intel',
 			Static		= '-static-libgcc -static-intel',		-- Might not work, test final binary with ldd. See http://www.trilithium.com/johan/2005/06/static-libstdc/
@@ -186,6 +193,19 @@ local icc_link = newtool {
 		linkAsShared	= atool.decorateSharedLibList,
 		rpath			= atool.decorateRPath
 	},
+	postbuild = function(cfg)
+		if cfg.soversion and cfg.kind == premake.SHAREDLIB and cfg.system ~= premake.WINDOWS then
+			local libnameVer = path.asRoot(cfg.linktarget.abspath)
+			local libnameNoVer = libnameVer:sub(1,#libnameVer-#cfg.soversion-1)
+			return {
+				name = "symlink",
+				description = "symlink "..libnameNoVer.." -> "..cfg.linktarget.name,
+				commands = "ln -sf "..cfg.linktarget.name.." "..libnameNoVer,
+				outputs = libnameNoVer,
+			}
+		end
+		return nil
+	end,
 
 	separateSharedLibraryPaths = true,
 	

@@ -20,10 +20,6 @@ local gcc_cc = newtool {
 	
 	flagMap = {
 		AddPhonyHeaderDependency = "-MP",	 -- used by makefiles
-		AllowUndefinedSymbols = {
-			Yes = "-Wl,--undefined-symbols",
-			No = "-Wl,--no-undefined-symbols",
-		},
 		CreateDependencyFile = "-MMD",
 		CreateDependencyFileIncludeSystem = "-MD",
 		InlineDisabled = "-fno-inline",
@@ -41,6 +37,14 @@ local gcc_cc = newtool {
 		Float = {
 			Fast		  	= "-fp-model fast=2",
 			Strict			= "-fp-model strict",
+		},
+		Language = {
+			["Assembler"]	= "-x assembler",
+			["AnsiC"]		= "-x c -ansi",
+			["C"]			= "-x c",
+			["C++"]			= "-x c++",
+			["C++0x"]		= "-std=c++0x",
+			["C99"]			= "-std=c99",
 		},
 		Optimize = {
 			Off				= "-O0",
@@ -130,6 +134,9 @@ local gcc_link = newtool {
 	fixedFlags = iif( _OPTIONS['disable-linker-groups'], "", '-Wl,--start-group' ),
 	extensionsForLinking = { '.o', '.a', '.so' },		-- possible inputs in to the linker
 	flagMap = {
+		AllowUndefinedSymbols = {
+			No = "-Wl,--no-undefined",
+		},
 		Stdlib = {
 			Shared		= '-shared-libgcc',
 			Static		= '-static-libgcc',		-- Might not work, test final binary with ldd. See http://www.trilithium.com/johan/2005/06/static-libstdc/
@@ -148,6 +155,19 @@ local gcc_link = newtool {
 		linkAsShared	= atool.decorateSharedLibList,
 		rpath			= atool.decorateRPath,
 	},
+	postbuild = function(cfg)
+		if cfg.soversion and cfg.kind == premake.SHAREDLIB and cfg.system ~= premake.WINDOWS then
+			local libnameVer = path.asRoot(cfg.linktarget.abspath)
+			local libnameNoVer = libnameVer:sub(1,#libnameVer-#cfg.soversion-1)
+			return {
+				name = "symlink",
+				description = "symlink "..libnameNoVer.." -> "..cfg.linktarget.name,
+				commands = "ln -sf "..cfg.linktarget.name.." $out",
+				outputs = libnameNoVer,
+			}
+		end
+		return nil
+	end,
 	endFlags = '-Wl,-Bdynamic',	-- always put this at the end
 	separateSharedLibraryPaths = true,
 	
@@ -156,6 +176,12 @@ local gcc_link = newtool {
 			error('Missing cfg')
 		end
 		local cmdflags = {}
+		
+		if cfg.architecture == 'x32' then
+			table.insert(cmdflags, '-m32')
+		elseif cfg.architecture == 'x64' then
+			table.insert(cmdflags, '-m64')
+		end
 		
 		if cfg.kind == premake.SHAREDLIB then
 			local soname = cfg.linktarget.name

@@ -189,10 +189,12 @@
 	
 	function ninja.onExecute()
 		local args = Seq:new(_ARGS)
-		local requested = Seq:new(targets.requested):select("name"):mkstring(' ')
+		-- commented this out as running premake TraderStump was complaining about missing (empty) TraderStump/tests target
+		--[[local requested = Seq:new(targets.requested):select("name"):mkstring(' ')
 		if _OPTIONS['printBins'] then
 			requested = requested..' printBinaries'
 		end
+		]]
 		
 		if table.isempty(targets.prjToBuild) and table.isempty(targets.slnToBuild) then
 			return
@@ -226,7 +228,7 @@
 				cmd = cmd .. ' ' .. flags 
 			end
 			
-			cmd = cmd .. ' ' .. requested
+			--cmd = cmd .. ' ' .. requested
 			
 			local rv = os.executef(cmd)
 			
